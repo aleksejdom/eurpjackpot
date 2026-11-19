@@ -102,3 +102,5 @@
 .auth-toggle{width:100%;border:0;background:transparent;color:#f5c34b;font-size:13px;margin-top:22px;text-decoration:underline}
 .auth-foot{color:#7e8da4;text-align:center;font-size:11px;margin:34px 0 0}
 @media(max-width:540px){.auth-card{padding:28px 22px}.auth-card h1{font-size:30px}}
+
+.scan-preview{margin:14px 0 24px;border:1px solid #354257;background:#0d1624;border-radius:11px;padding:13px}.scan-preview summary{cursor:pointer;color:#e8d597;font-size:13px;font-weight:700}.scan-preview img{display:block;object-fit:contain;max-width:100%;max-height:560px;margin:14px auto 0;border-radius:7px}

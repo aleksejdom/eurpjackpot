@@ -44,6 +44,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
  const [busy,setBusy]=useState(false),[scanning,setScanning]=useState(false),[scanProgress,setScanProgress]=useState("");
  const [message,setMessage]=useState(""),[error,setError]=useState("");
  const [scanWarnings,setScanWarnings]=useState<string[]>([]);
+ const [receiptPreview,setReceiptPreview]=useState<string|null>(null);
  const [purchase,setPurchase]=useState(""),[amount,setAmount]=useState(""),[note,setNote]=useState("");
  const [lines,setLines]=useState<FormLine[]>([emptyLine()]),[date,setDate]=useState(""),[dates,setDates]=useState<string[]>([]);
  const [showForm,setShowForm]=useState(false),[expanded,setExpanded]=useState<string|null>(null);
@@ -53,10 +54,12 @@ export default function MyGames({draws}:{draws:Draw[]}){
    catch(e){setError(e instanceof Error?e.message:"Spiele nicht verfügbar");}
  }
  useEffect(()=>{void load();},[]);
+ useEffect(()=>()=>{if(receiptPreview)URL.revokeObjectURL(receiptPreview);},[receiptPreview]);
  async function scan(file?:File) {
   if(!file)return;
   if(file.size>12*1024*1024){setError("Foto darf höchstens 12 MB groß sein");return;}
   if(!file.type.startsWith("image/")){setError("Bitte ein Foto auswählen");return;}
+  setReceiptPreview(URL.createObjectURL(file));
   setScanning(true);setError("");setScanWarnings([]);setMessage("");setScanProgress("Bild wird vorbereitet …");
   let worker:Awaited<ReturnType<typeof import("tesseract.js").createWorker>>|undefined;
   try{
@@ -155,6 +158,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
    <div className="games-title"><h2>Neuen Schein erfassen</h2><p>Die App erkennt Spielnummern, 5/50, 2/12, Kaufdatum, Eurojackpot-Ziehungsdatum, Laufzeit und Betrag soweit lesbar. Prüfe alle Vorschläge sorgfältig.</p></div>
    <label className="capture"><Camera size={24}/><strong>{scanning?scanProgress:"Eurojackpot-Quittung fotografieren oder auswählen"}</strong><span>Quittung mit gelben LOTTO-Rändern möglichst vollständig und scharf fotografieren. Das Foto wird nicht auf dem Server gespeichert.</span><input aria-label="Spielschein fotografieren" type="file" accept="image/*" capture="environment" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file);e.target.value="";}}/></label>
    {scanWarnings.length>0&&<div className="scan-review" role="status"><strong>Beim Prüfen beachten:</strong><ul>{scanWarnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
+   {receiptPreview&&<details className="scan-preview" open><summary>Originalquittung zum Zahlenvergleich anzeigen</summary><img src={receiptPreview} alt="Originalaufnahme zur Kontrolle der automatisch erkannten Daten"/></details>}
    <div className="games-form-grid"><label className="field">Kaufdatum<input type="date" value={purchase} onChange={e=>setPurchase(e.target.value)}/></label><label className="field">Gesamtpreis in € (inkl. Gebühren)<input type="text" inputMode="decimal" placeholder="z. B. 12,50" value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>
    <div className="games-subtitle"><h3>Tippfelder</h3><span>5 Hauptzahlen + 2 Eurozahlen je Feld</span></div>
    {lines.map((line,i)=><div className="line-editor" key={i}><span className="line-index">{i+1}</span><label className="field">Hauptzahlen<input value={line.main} placeholder="5 12 23 34 48" onChange={e=>updateLine(i,"main",e.target.value)}/></label><label className="field euro-input">Eurozahlen<input value={line.euro} placeholder="2 9" onChange={e=>updateLine(i,"euro",e.target.value)}/></label><button aria-label={"Tippfeld "+(i+1)+" entfernen"} className="small-btn" disabled={lines.length===1} onClick={()=>setLines(v=>v.filter((_,j)=>i!==j))}><Trash2 size={16}/></button></div>)}
