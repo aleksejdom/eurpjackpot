@@ -1,73 +1,49 @@
-# Eurojackpot – Next.js, PostgreSQL und Meine Spiele
+# Eurojackpot – Next.js Dashboard
 
-Persönliches Eurojackpot-Archiv mit Ziehungszahlen, Kalenderfilter, gescannten oder manuell erfassten Spielscheinen, Zahlenstatistik sowie Aufzeichnung von Ausgaben und optionalen Auszahlungen.
+Persönliches Eurojackpot-Archiv auf Basis von Next.js, PostgreSQL und Better Auth. Es enthält Ziehungshistorie, Datumsauswahl, Statistik, einen Bereich **Meine Spiele**, eine Fotoerfassung mit Tesseract-OCR im Browser, Ausgaben und eine Trefferprüfung anhand der erfassten Ziehungen.
 
-## Deployment mit Coolify
+## Login im Frontend / Better Auth
 
-1. **main** als Git-Branch, **Dockerfile** als Build-Pack und Port **3000** verwenden.
-2. Environment Variables (nur **Runtime**, geheim, niemals ins Repository):
-   - `DATABASE_URL`: PostgreSQL-Verbindungsadresse aus deiner bestehenden Coolify-Postgres-Ressource.
-   - `BASIC_AUTH_USER`: eigener Benutzername.
-   - `BASIC_AUTH_PASSWORD`: starkes, einzigartiges Passwort.
-   - `SYNC_INTERVAL_HOURS=6`: optionaler Abrufabstand für Ziehungszahlen.
-3. Das interne Coolify-Netzwerk muss die App mit PostgreSQL verbinden. PostgreSQL ist keine SQLite-Datei. Alte SQLite-Variablen und Mounts werden nicht benötigt.
-4. HTTPS für die Website aktivieren (auch erforderlich für mobile Kamerafunktionen).
-5. Deployment starten, anschließend im Browser per HTTP Basic Auth anmelden.
+Das frühere HTTP-Basic-Auth-Popup wurde entfernt. Stattdessen erscheint unter `/login` ein eigenes Loginformular mit E-Mail und Passwort. Das Dashboard liegt unter `/` und wird erst bei einer gültigen Better-Auth-Sitzung gerendert. Die Ziehungs- und Spielschein-APIs prüfen ebenfalls die Sitzung. Oben im Dashboard gibt es „Abmelden“.
 
-**Fail closed:** Sind BASIC_AUTH_USER oder BASIC_AUTH_PASSWORD nicht gesetzt, reagiert die App mit HTTP 503, ohne Zugang zum Dashboard oder zu APIs.
+Better Auth speichert Benutzerkonten und Sessions in derselben PostgreSQL-Datenbank wie die Ziehungsdaten. Das benötigte Better-Auth-Schema wird bei der ersten Anfrage über die integrierte Migration erstellt. Die PostgreSQL-Rolle muss die nötigen Tabellenrechte besitzen.
 
-## Meine Spiele
+### Coolify-Einrichtung
 
-- Im Reiter **Meine Spiele** den Button „Spielschein erfassen“ auswählen.
-- Auf dem Smartphone über das Kamerafeld ein Foto aufnehmen; alternativ ein bestehendes Bild auswählen.
-- **OCR läuft im Browser** (Tesseract.js mit Sprachdaten/Worker, die gegebenenfalls über das Internet geladen werden). Fotos werden **nicht** an die App-API gesendet. OCR ist fallibel: alle erkannten Haupt- und Eurozahlen sowie Termine unbedingt mit dem Schein vergleichen.
-- Falls die Erkennung unvollständig ist, Zahlen selbst eintragen: 5 unterschiedliche Hauptzahlen 1–50, 2 unterschiedliche Eurozahlen 1–12.
-- **Kaufdatum**, **alle Ziehungstermine** (Dienstag/Freitag), **Gesamtpreis inklusive Gebühren** und optional eine Notiz eingeben.
-- Nach Bestätigung und Speichern werden die Tipps bei vorhandenen Ziehungen mit den gespeicherten Gewinnzahlen verglichen.
-- Die App kennzeichnet Trefferzahlen, zeigt die Anzahl Haupttreffer + Eurotreffer, speichert pro Ticket die **einmaligen** Kosten sowie optional manuell eingetragene tatsächlich erhaltene Auszahlungen.
-- Zusätzliche Übersicht: häufig verwendete Zahlen, Ausgaben nach Kaufmonat, Gesamtausgaben und Differenz zwischen erfassten Auszahlungen und Ausgaben.
+- Branch: `main`
+- Build Pack: `Dockerfile`, Port `3000`
+- `DATABASE_URL`: geheime interne PostgreSQL-Verbindungs-URL
+- `BETTER_AUTH_SECRET`: mindestens 32 Zeichen, zufällig; zum Beispiel mittels `openssl rand -base64 48`
+- `BETTER_AUTH_URL`: exakte, öffentlich erreichbare HTTPS-Adresse der App, beispielsweise `https://lotto.example.de`
+- `BETTER_AUTH_ENABLE_SIGNUP`: **nur bei erster Einrichtung auf `true`**, danach **`false`** und erneut deployen
+- `SYNC_INTERVAL_HOURS=6`: optional, Ziehungsdaten werden bei Seitenabrufen aktualisiert
 
-### Einschränkungen
+Die alten Variablen `BASIC_AUTH_USER` und `BASIC_AUTH_PASSWORD` werden nicht mehr verwendet und können entfernt werden.
 
-- **OCR ist eine Erfassungshilfe, keine sichere automatische Scheinprüfung**. Übertragung von Datum, Anzahl Ziehungen, Auswahl und Gesamtpreis erfolgt nach manueller Bestätigung, nicht automatisch aus dem Foto.
-- Historie der aktuellen Quelle ab **25.03.2022**. Fehlen Ergebnisse, erscheint kein abgeschlossener Trefferstatus.
-- Aus Zahlentreffern werden **keine Euro-Gewinne geschätzt**. Für reale Gewinne sind offizielle Gewinnklassen/Quoten und tatsächliche Auszahlungen zu prüfen.
-- Die App erfasst aktuell keinen Zusatzlotterie-Spieltyp; eingetragene Gesamtkosten können diese enthalten, die Trefferwertung nicht.
-- Für Datensicherung PostgreSQL-Backups in Coolify konfigurieren.
-- HTTP Basic Auth ist eine einfache Zugangssperre für eine persönliche App. Verwende ausschließlich **HTTPS** und sichere Zugangsdaten. Es gibt keine Multiuser-Isolation oder Login-Verwaltung.
-- Bei Bedarf später zusätzlich Rate Limiting und einen Auth-Proxy in Coolify aktivieren.
-- Die App verwendet externe Google Fonts; für einen produktiven DSGVO-sensiblen Betrieb lokal hosten.
-- Alle Angaben ohne Gewähr. Keine offizielle Eurojackpot-Anwendung.
+**Erstes Konto anlegen:** zunächst `BETTER_AUTH_ENABLE_SIGNUP=true` setzen und deployen. `/login` aufrufen und „Erstes Konto einrichten“ auswählen. Nach erfolgreicher Registrierung **sofort** `BETTER_AUTH_ENABLE_SIGNUP=false` setzen und redeployen. Damit ist die öffentliche Registrierung wieder gesperrt. Alternativ kann ein Konto über administrative Better-Auth-Werkzeuge angelegt werden.
 
-## Datenbank
+⚠️ Diese App besitzt aktuell **keine getrennten Datenräume pro User**. Alle angemeldeten Konten sehen dieselben Tipps und Ausgaben. Deshalb in dieser persönlichen Installation nur das eigene Konto anlegen.
 
-Es werden zusätzlich zu `eurojackpot_draws` und `eurojackpot_meta` die Tabellen `ej_tickets`, `ej_ticket_lines`, `ej_ticket_dates`, `ej_payouts` automatisch bei der ersten Anfrage angelegt. Bestehende Tabellen werden nicht gelöscht. Ein Schein kann mehrere Tippfelder und Ziehungstermine haben; der Betrag zählt für den gesamten Schein **einmal**.
+## Spielscheinerkennung
+
+Die Erkennung orientiert sich an Lotto-Baden-Württemberg-EUROJACKPOT-Spielquittungen: Spielnummer, 5/50-Hauptzahlen, 2/12-Eurozahlen, Kaufdatum, Laufzeit, Ziehungstermine und Betrag. Das Foto wird vor der Texterkennung lokal im Browser aufbereitet. Bei unsicheren Ergebnissen bleiben Felder leer und werden zur manuellen Kontrolle markiert. **OCR kann Zahlen, Beträge oder Daten falsch ablesen; niemals ungeprüft speichern.** Bilddateien werden nicht in der Datenbank abgelegt oder an die App-API übertragen. OCR-Sprachmodelle können nachgeladen werden.
+
+Der Reiter „Meine Spiele“ speichert nach Bestätigung Tippfelder, Kaufdatum, Ziehungsdaten und Kosten in PostgreSQL. Die Kosten werden pro Schein nur einmal gezählt. Die App zeigt Haupt- und Eurozahlentreffer, individuelle Zahlenhäufigkeiten, Ausgaben nach Monat und optional manuell erfasste Auszahlungen. Gewinnquoten und tatsächliche Gewinnsummen werden nicht automatisch ermittelt.
+
+## Datenquelle
+
+Öffentliches Eurojackpot-JSON-Archiv von https://github.com/protomultix/eurojackpot-api auf Grundlage des LOTTO-Bayern-Archivs, standardmäßig ab 25.03.2022. Import bei erstem Abruf und erneuter Abruf nach dem konfigurierten Intervall; kein Hintergrund-Cronjob.
+
+## API
+
+- `/api/auth/[...all]`: Better Auth
+- `GET /api/draws`: Ziehungen
+- `GET /api/games`, `POST /api/games`: Spielscheine
+- `DELETE /api/games/:id`: Spielschein löschen
+- `PUT /api/games/:id/payout`: Auszahlung erfassen
 
 ## Lokal
 
-Node.js 22+, PostgreSQL. `npm install`, `cp .env.example .env.local`, Werte befüllen, `npm run dev`.
+Node.js 22+ und PostgreSQL erforderlich. `npm install` ausführen, `.env.example` als `.env.local` kopieren und eigene Laufzeitvariablen eintragen, dann `npm run dev`.
 
-## API (Basic Auth erforderlich)
-
-- `GET /api/draws` – Ziehungen; `?refresh=1` aktualisiert bei Bedarf
-- `GET /api/games` – gespeicherte Scheine
-- `POST /api/games` – geprüften Schein speichern
-- `DELETE /api/games/:id` – Schein entfernen
-- `PUT /api/games/:id/payout` – Auszahlung für eine zugeordnete Ziehung speichern
-
-## Better Auth – Frontend-Login (ersetzt HTTP Basic Auth)
-
-Diese Version entfernt die Browser-Popup-Authentifizierung vollständig. Stattdessen gibt es unter **/login** eine eigene E-Mail-/Passwortmaske und ein „Abmelden“ im Dashboard. Seiten und alle privaten API-Routen prüfen die Better-Auth-Sitzung auf dem Server.
-
-### Coolify Environment Variables
-- `DATABASE_URL`: bestehende interne PostgreSQL-Verbindung (Runtime secret)
-- `BETTER_AUTH_SECRET`: zufälliger geheimer Schlüssel, mindestens 32 Zeichen; `openssl rand -base64 48` erzeugt einen Wert
-- `BETTER_AUTH_URL`: **exakte öffentliche HTTPS-Adresse der App**, z. B. `https://lotto.example.de`
-- `BETTER_AUTH_ENABLE_SIGNUP=true`: **nur während der erstmaligen Kontoanlage**. Nach Registrierung unbedingt **false** setzen und erneut deployen.
-- Alte `BASIC_AUTH_USER` und `BASIC_AUTH_PASSWORD` können entfernt werden.
-
-Better Auth verwendet PostgreSQL für Sessions und Accounts. Das benötigte Schema wird vor der ersten Auth-Anfrage über die Better-Auth-Migration initialisiert. Der PostgreSQL-Benutzer braucht hierfür passende Rechte. Keine der Eurojackpot-Tabellen wird gelöscht.
-
-**Erster Start:** Deployment → `/login` → „Erstes Konto einrichten“ → E-Mail, Name und starkes Passwort anlegen → `BETTER_AUTH_ENABLE_SIGNUP=false` → Redeploy → reguläre Anmeldung.
-
-**Sicherheit:** Registrierung nur kurzzeitig aktivieren, HTTPS erzwingen, keine offenen Administrationskonten. Das ist aktuell eine einzelne private App ohne getrennte Daten pro Benutzer: Alle registrierten Konten sehen dieselben Spiele, deshalb nur das eigene Konto anlegen. Der Login verwendet Better Auth (HTTP-only Sitzungscookies) und schützt alle Spiele-APIs.
+**Hinweise:** HTTPS verwenden, PostgreSQL-Backups einrichten, Zugangsdaten nicht in GitHub speichern. Es gibt derzeit weder Multiuser-Datentrennung noch automatisierte offizielle Gewinnquoten. Alle Angaben ohne Gewähr; keine offizielle Eurojackpot-Anwendung.
