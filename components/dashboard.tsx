@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import MyGames from "./my-games";
+import LogoutButton from "./logout-button";
 import { BookOpen, Ticket } from "lucide-react";
 import { CalendarDays, ChevronLeft, ChevronRight, Database, RefreshCcw, Search, Trophy, Clock3, ChartNoAxesColumn } from "lucide-react";
 type Draw={date:string;date_de:string;main_numbers:number[];euro_numbers:number[]};
@@ -29,7 +30,7 @@ export default function Dashboard(){
  const freq=useMemo(()=>{const tally=Array.from({length:50},(_,i)=>({n:i+1,count:0}));for(const d of data.draws)for(const n of d.main_numbers)tally[n-1].count++;return tally.sort((a,b)=>b.count-a.count).slice(0,5)},[data.draws]);
  function reset(){setYear("all");setSelectedDate("");setSearch("");setPage(0);}
  return <main className="shell">
-  <header className="topbar"><div className="brand"><span className="brand-logo"><Trophy size={19}/></span><span>EURO<span className="brand-accent">JACKPOT</span><small>ERGEBNISARCHIV</small></span></div><div className="top-right"><span className="live"><span className="live-dot"/>Datenarchiv</span><button className="ghost icon-btn" title="Daten aktualisieren" onClick={()=>void load(true)} disabled={refreshing}><RefreshCcw size={17} className={refreshing?"spin":""}/><span>Aktualisieren</span></button></div></header>
+  <header className="topbar"><div className="brand"><span className="brand-logo"><Trophy size={19}/></span><span>EURO<span className="brand-accent">JACKPOT</span><small>ERGEBNISARCHIV</small></span></div><div className="top-right"><span className="live"><span className="live-dot"/>Datenarchiv</span><LogoutButton/><button className="ghost icon-btn" title="Daten aktualisieren" onClick={()=>void load(true)} disabled={refreshing}><RefreshCcw size={17} className={refreshing?"spin":""}/><span>Aktualisieren</span></button></div></header>
   <nav className="dashboard-tabs" aria-label="Bereiche"><button className={tab==="history"?"active":""} onClick={()=>setTab("history")}><BookOpen size={18}/> Ziehungshistorie</button><button className={tab==="games"?"active":""} onClick={()=>setTab("games")}><Ticket size={18}/> Meine Spiele</button></nav>
   {tab==="games"?<MyGames draws={data.draws}/>:<>
   <section className="intro"><div className="eyebrow">ZAHLEN. DATEN. ZIEHUNGEN.</div><h1>Jede Ziehung.<br/><span>Ein Blick zurück.</span></h1><p>Durchsuche die Eurojackpot-Gewinnzahlen nach Datum und entdecke die gesamte verfügbare Historie.</p></section>

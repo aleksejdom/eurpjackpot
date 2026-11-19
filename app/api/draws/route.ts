@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import {requireApiSession} from "@/lib/require-session";
 import { getAllDraws, getMeta } from "@/lib/db";
 import { syncIfNeeded } from "@/lib/sync";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(request:Request) {
   try {
+    if(!(await requireApiSession())) return NextResponse.json({error:"Nicht angemeldet"},{status:401});
     const url=new URL(request.url);
     const force=url.searchParams.get("refresh")==="1";
     const result=await syncIfNeeded(force);

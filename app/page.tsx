@@ -1,2 +1,9 @@
 import Dashboard from "@/components/dashboard";
-export default function Home(){return <Dashboard/>;}
+import {getUserSession} from "@/lib/require-session";
+import {redirect} from "next/navigation";
+export const dynamic="force-dynamic";
+export default async function Home(){
+ const session=await getUserSession();
+ if(!session?.user)redirect("/login");
+ return <Dashboard/>;
+}

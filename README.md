@@ -54,3 +54,20 @@ Node.js 22+, PostgreSQL. `npm install`, `cp .env.example .env.local`, Werte bef�
 - `POST /api/games` – geprüften Schein speichern
 - `DELETE /api/games/:id` – Schein entfernen
 - `PUT /api/games/:id/payout` – Auszahlung für eine zugeordnete Ziehung speichern
+
+## Better Auth – Frontend-Login (ersetzt HTTP Basic Auth)
+
+Diese Version entfernt die Browser-Popup-Authentifizierung vollständig. Stattdessen gibt es unter **/login** eine eigene E-Mail-/Passwortmaske und ein „Abmelden“ im Dashboard. Seiten und alle privaten API-Routen prüfen die Better-Auth-Sitzung auf dem Server.
+
+### Coolify Environment Variables
+- `DATABASE_URL`: bestehende interne PostgreSQL-Verbindung (Runtime secret)
+- `BETTER_AUTH_SECRET`: zufälliger geheimer Schlüssel, mindestens 32 Zeichen; `openssl rand -base64 48` erzeugt einen Wert
+- `BETTER_AUTH_URL`: **exakte öffentliche HTTPS-Adresse der App**, z. B. `https://lotto.example.de`
+- `BETTER_AUTH_ENABLE_SIGNUP=true`: **nur während der erstmaligen Kontoanlage**. Nach Registrierung unbedingt **false** setzen und erneut deployen.
+- Alte `BASIC_AUTH_USER` und `BASIC_AUTH_PASSWORD` können entfernt werden.
+
+Better Auth verwendet PostgreSQL für Sessions und Accounts. Das benötigte Schema wird vor der ersten Auth-Anfrage über die Better-Auth-Migration initialisiert. Der PostgreSQL-Benutzer braucht hierfür passende Rechte. Keine der Eurojackpot-Tabellen wird gelöscht.
+
+**Erster Start:** Deployment → `/login` → „Erstes Konto einrichten“ → E-Mail, Name und starkes Passwort anlegen → `BETTER_AUTH_ENABLE_SIGNUP=false` → Redeploy → reguläre Anmeldung.
+
+**Sicherheit:** Registrierung nur kurzzeitig aktivieren, HTTPS erzwingen, keine offenen Administrationskonten. Das ist aktuell eine einzelne private App ohne getrennte Daten pro Benutzer: Alle registrierten Konten sehen dieselben Spiele, deshalb nur das eigene Konto anlegen. Der Login verwendet Better Auth (HTTP-only Sitzungscookies) und schützt alle Spiele-APIs.
