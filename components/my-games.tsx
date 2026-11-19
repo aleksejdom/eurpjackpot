@@ -33,10 +33,18 @@ function parseOcr(text:string):FormLine[]{
  return found.slice(0,20);
 }
 function MatchBalls({line,draw}:{line:Line;draw?:Draw}){
+ const mainWinners=new Set((draw?.main_numbers||[]).map(Number));
+ const euroWinners=new Set((draw?.euro_numbers||[]).map(Number));
  return <div className="ticket-balls">
-  {line.main_numbers.map((n,i)=><span key={"m"+i} className={"ticket-ball"+(draw?.main_numbers.includes(n)?" matched":"")}>{n}</span>)}
+  {line.main_numbers.map((n,i)=>{
+   const hit=mainWinners.has(Number(n));
+   return <span key={"m"+i} className={"ticket-ball"+(hit?" matched":"")} style={hit?{backgroundColor:"#37d59c",color:"#0a2a20",boxShadow:"0 0 0 2px #57e9b1"}:undefined} title={hit?"Richtige Hauptzahl":"Hauptzahl ohne Treffer"}>{n}</span>;
+  })}
   <span className="ticket-divider">+</span>
-  {line.euro_numbers.map((n,i)=><span key={"e"+i} className={"ticket-ball euro"+(draw?.euro_numbers.includes(n)?" matched-euro":"")}>{n}</span>)}
+  {line.euro_numbers.map((n,i)=>{
+   const hit=euroWinners.has(Number(n));
+   return <span key={"e"+i} className={"ticket-ball euro"+(hit?" matched-euro":"")} style={hit?{backgroundColor:"#37d59c",color:"#0a2a20",boxShadow:"0 0 0 2px #57e9b1"}:{backgroundColor:"#f5c34b",color:"#272114"}} title={hit?"Richtige Eurozahl":"Eurozahl ohne Treffer"}>{n}</span>;
+  })}
  </div>;
 }
 export default function MyGames({draws}:{draws:Draw[]}){
@@ -196,7 +204,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
    {!tickets.length?<div className="empty">Noch keine Spielscheine gespeichert.</div>:tickets.map(t=><div className="ticket-card" key={t.id}>
      <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" type="button" title="Schein bearbeiten" aria-label={"Spielschein vom "+readableDate(t.purchased_on)+" bearbeiten"} onClick={()=>startEdit(t)}><Pencil size={16}/></button><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
      {expanded===t.id&&<div className="ticket-detail">{t.dates.map(d=><div className="ticket-draw" key={d}><div className="ticket-draw-header"><strong>Ziehung {readableDate(d)}</strong><span>{drawMap.has(d)?"Ergebnis verfügbar":"Noch kein Ergebnis im Archiv"}</span></div>
-       {t.lines.map((line,i)=>{const draw=drawMap.get(d);const mains=draw?line.main_numbers.filter(n=>draw.main_numbers.includes(n)).length:0;const euros=draw?line.euro_numbers.filter(n=>draw.euro_numbers.includes(n)).length:0;return <div className="ticket-line-result" key={i}><small>Feld {i+1}</small><MatchBalls line={line} draw={draw}/><span className="match-count">{draw?mains+" + "+euros:"Offen"}</span></div>;})}
+       {t.lines.map((line,i)=>{const draw=drawMap.get(d);const mains=draw?line.main_numbers.filter(n=>draw.main_numbers.includes(n)).length:0;const euros=draw?line.euro_numbers.filter(n=>draw.euro_numbers.map(Number).includes(Number(n))).length:0;return <div className="ticket-line-result" key={i}><small>Feld {i+1}</small><MatchBalls line={line} draw={draw}/><span className="match-count">{draw?mains+" + "+euros:"Offen"}</span></div>;})}
        {drawMap.has(d)&&<div className="winning-reference">Gezogen: {drawMap.get(d)!.main_numbers.join(" · ")} + {drawMap.get(d)!.euro_numbers.join(" · ")}</div>}
        <PayoutInput date={d} ticketId={t.id} recorded={t.payouts.find(p=>p.date===d)?.amount_cents} onSave={savePayout}/>
      </div>)}</div>}
