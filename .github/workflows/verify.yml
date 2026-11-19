@@ -1,0 +1,23 @@
+name: Verify Eurojackpot app
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      BETTER_AUTH_SECRET: ci-only-test-secret-abcdefghijklmnopqrstuvwxyz-1234567890
+      BETTER_AUTH_URL: https://example.test
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
+      BETTER_AUTH_ENABLE_SIGNUP: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run test
+      - run: npm run build

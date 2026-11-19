@@ -78,3 +78,22 @@ Nach Hinterlegen der Secrets im GitHub-Repository unter Settings → Secrets and
 Die App ermittelt eine der 12 Gewinnklassen nach Hauptzahl- und Eurozahlentreffern und zeigt **Gewonnen: 0,00 €**, wenn keine Gewinnklasse erreicht wurde. Bei einer Gewinnklasse ohne gespeicherte Auszahlungsquote zeigt sie **Gewonnen: Quote ausstehend**, nicht einen geschätzten Eurobetrag. Ist für Datum und Klasse eine passende Quote gespeichert, erscheint der Betrag in Euro.
 
 `eurojackpot_prize_quotas` speichert bestätigte Daten nach Datum und Gewinnklasse. `EUROJACKPOT_QUOTAS_URL` ist eine **optionale** HTTPS-JSON-Quelle mit dem in `lib/prizes.ts` unterstützten Quotenformat. Eine verlässlich kompatible, aktuelle Quelle muss vor der Aktivierung noch geprüft werden; es wird keine unbestätigte Quellenadresse fest einkodiert. Ohne Quotenquelle bleiben Gewinnbeträge bei gewinnberechtigten Tipps als **ausstehend** gekennzeichnet. Manuell erfasste tatsächliche Auszahlungen bleiben davon getrennt.
+
+## Umsetzung der UX- und Generator-Erweiterungen (Nov. 2026)
+
+- `/games/new`: eigenständige, fokussierte Spielscheinerfassung mit Kamera, lokalem OCR, manueller Korrektur und Speichern. Auf dieser Seite werden keine fremden Dashboard-Abschnitte angezeigt.
+- `/games/edit/:id`: derselbe Editor für bestehende Scheine. Beide Seiten prüfen die Better-Auth-Sitzung, die API bleibt zusätzlich serverseitig geschützt. Zurück zu `/?tab=games`.
+- Geschlossene Spielschein-Kacheln zeigen die Zahl **richtiger Einzelzahlen insgesamt**, getrennt nach Haupt- und Eurozahlen, über alle bekannten zugeordneten Ziehungen und Tippfelder. Fehlende Ziehungen erscheinen als „Treffer noch offen“.
+- Die beiden oberen Karten „Erfasste Auszahlungen“ und „Bilanz“ wurden entfernt, ebenso die gleichnamigen Zeilen in der Ausgabenübersicht. Gesamtausgaben werden über alle Scheine berechnet, niemals monatlich oder mehrfach pro Schein.
+- Alle Zahlenbälle im Dashboard, in der neuesten Ziehung, den historischen Ziehungen, Spielscheinen und Zufallsscheinen erhalten kompakte, mobile Größen und Abstände, sodass die vollständige Zeile mit 5 + 2 Zahlen möglichst nicht abgeschnitten wird.
+- Für den Editor sind versehentliche Zwei-Finger-Gesten per CSS `touch-action` reduziert, ohne das Browser-Menü zur Textvergrößerung zu deaktivieren.
+
+### Zufallsschein
+
+Unter `Zufallsschein` stehen standardmäßig fünf Tippfelder und **neun einzeln schaltbare Regeln** zur Verfügung. Das Accordion erklärt die Kriterien. Vollständig identische Tipps werden selbst dann verhindert, wenn die anderen Regeln abgeschaltet sind.
+
+Der manuelle Zahlenfilter ist getrennt für Hauptzahlen 1–50 und Eurozahlen 1–12; ausgeschlossene Werte können in keinem generierten Tipp vorkommen. Die eigenen Ausschlüsse bleiben optional lokal im Browser gespeichert. Der zusätzliche **strikte Wochenfilter** sperrt alle Zahlen, die in den letzten **2, 3 oder 4 Wochen einschließlich der neuesten gespeicherten Ziehung** gezogen wurden. Er wirkt für Haupt- und Eurozahlen. Zu wenige verbleibende Zahlen führen zu einer Meldung statt zu einem ungültigen Tipp. Die Grundstrategie „Letzte Wochen ausschließen“ aktiviert diesen harten Filter unabhängig von anderen Gewichtungen.
+
+Historische Auswertungen enthalten die häufigsten Haupt- und Eurozahlen, 2er- und 3er-Kombinationen von Hauptzahlen, Nachbarzahl-Häufigkeit, Wiederholungen und Zahlensummen. Die historischen Werte werden **deutlich getrennt** von der unveränderlichen theoretischen Gewinnchance gezeigt. Statistik-Muster sind keine Prognose.
+
+Die Codeänderungen werden durch `npm run test` sowie das GitHub-Actions-Workflow `Verify Eurojackpot app` auf jedem Push nach `main` überprüft. Ein GitHub-Actions-Erfolg muss nach dem Push geprüft werden, bevor eine erfolgreiche Produktions-Buildprüfung behauptet wird.

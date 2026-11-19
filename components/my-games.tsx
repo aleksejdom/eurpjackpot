@@ -47,7 +47,7 @@ function MatchBalls({line,draw}:{line:Line;draw?:Draw}){
   })}
  </div>;
 }
-export default function MyGames({draws}:{draws:Draw[]}){
+export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"list"|"editor";editId?:string}){
  const [tickets,setTickets]=useState<Ticket[]>([]);
  const [quotas,setQuotas]=useState<Record<string,Record<string,number>>>({});
  const [busy,setBusy]=useState(false),[scanning,setScanning]=useState(false),[scanProgress,setScanProgress]=useState("");
@@ -56,14 +56,17 @@ export default function MyGames({draws}:{draws:Draw[]}){
  const [receiptPreview,setReceiptPreview]=useState<string|null>(null);
  const [purchase,setPurchase]=useState(""),[amount,setAmount]=useState(""),[note,setNote]=useState("");
  const [lines,setLines]=useState<FormLine[]>([emptyLine()]),[date,setDate]=useState(""),[dates,setDates]=useState<string[]>([]);
- const [showForm,setShowForm]=useState(false),[expanded,setExpanded]=useState<string|null>(null);
- const [editingId,setEditingId]=useState<string|null>(null);
+ const [showForm,setShowForm]=useState(mode==="editor"),[expanded,setExpanded]=useState<string|null>(null);
+ const [editingId,setEditingId]=useState<string|null>(editId??null);
+ const [editLoaded,setEditLoaded]=useState(false);
+ const [listLoaded,setListLoaded]=useState(false);
  const drawMap=useMemo(()=>new Map(draws.map(d=>[d.date,d])),[draws]);
  async function load(){
-   try{const r=await fetch("/api/games",{cache:"no-store"});const result=await r.json();if(!r.ok)throw new Error(result.error);setTickets(result.tickets||[]);}
+   try{const r=await fetch("/api/games",{cache:"no-store"});const result=await r.json();if(!r.ok)throw new Error(result.error);setTickets(result.tickets||[]);setListLoaded(true);}
    catch(e){setError(e instanceof Error?e.message:"Spiele nicht verfügbar");}
  }
  useEffect(()=>{void load();void loadPrizes();},[]);
+ useEffect(()=>{if(mode==="editor"&&editId&&listLoaded&&!editLoaded){const ticket=tickets.find(t=>t.id===editId);if(ticket){startEdit(ticket);}else setError("Der angeforderte Spielschein wurde nicht gefunden.");setEditLoaded(true);}},[mode,editId,listLoaded,editLoaded,tickets]);
  async function loadPrizes(){
    try {
     const r=await fetch("/api/prizes",{cache:"no-store"});
@@ -159,6 +162,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
    const out=await response.json();if(!response.ok)throw new Error(out.error||"Speichern fehlgeschlagen");
    const wasEditing=Boolean(editingId);
    await load();clearForm();
+   if(mode==="editor"){window.location.assign("/?tab=games");return;}
    setMessage(wasEditing?"Spielschein aktualisiert. Treffer, Zahlenhäufigkeit und Gesamtausgaben wurden neu berechnet.":"Schein gespeichert. Die Zahlen werden mit vorhandenen Ziehungen verglichen.");
   }catch(e){setError(e instanceof Error?e.message:"Speichern fehlgeschlagen");}
   finally{setBusy(false);}
@@ -183,15 +187,20 @@ export default function MyGames({draws}:{draws:Draw[]}){
   return {main:main.sort((a,b)=>b.count-a.count||a.number-b.number),euro:euro.sort((a,b)=>b.count-a.count||a.number-b.number)};
  },[tickets]);
  const checked=tickets.reduce((s,t)=>s+t.dates.reduce((a,d)=>a+(drawMap.has(d)?t.lines.length:0),0),0);
- return <section className="games-view">
-  <div className="games-hero"><div><span className="eyebrow">PERSÖNLICHES ARCHIV</span><h1>Meine Spiele</h1><p>Spielscheine erfassen, Treffer kontrollieren und deine Ausgaben nachvollziehen.</p></div><button className="primary-btn" onClick={toggleNew}><Plus size={18}/>{showForm?"Erfassung schließen":"Spielschein erfassen"}</button></div>
-  <div className="stats games-stats">
-   <div className="stat"><div className="stat-top"><span>Gesamtausgaben</span><Coins size={17}/></div><strong>{currency(spent)}</strong><small>{tickets.length} erfasste Scheine</small></div>
-   <div className="stat"><div className="stat-top"><span>Erfasste Auszahlungen</span><Check size={17}/></div><strong>{currency(paid)}</strong><small>Auszahlungen manuell eingetragen</small></div>
-   <div className="stat"><div className="stat-top"><span>Bilanz</span><Coins size={17}/></div><strong>{currency(paid-spent)}</strong><small>Auszahlungen minus Ausgaben</small></div>
-  </div>
-  {error&&<div className="warning">{error}</div>}{message&&<p className="games-note" role="status">{message}</p>}
-  {showForm&&<div className="games-panel">
+ const ticketHitTotals=(ticket:Ticket)=>{
+  let main=0,euro=0,compared=0;
+  for(const date of ticket.dates){
+   const draw=drawMap.get(date);if(!draw)continue;
+   const winMain=new Set(draw.main_numbers.map(Number)),winEuro=new Set(draw.euro_numbers.map(Number));
+   for(const line of ticket.lines){
+    main+=line.main_numbers.filter(n=>winMain.has(Number(n))).length;
+    euro+=line.euro_numbers.filter(n=>winEuro.has(Number(n))).length;
+    compared++;
+   }
+  }
+  return {main,euro,compared,total:main+euro};
+ };
+ const formPanel=<div className="games-panel">
    <div className="games-title"><h2>{editingId?"Spielschein bearbeiten":"Neuen Schein erfassen"}</h2><p>Die App erkennt Spielnummern, 5/50, 2/12, Kaufdatum, Eurojackpot-Ziehungsdatum, Laufzeit und Betrag soweit lesbar. Prüfe alle Vorschläge sorgfältig.</p></div>
    <label className="capture"><Camera size={24}/><strong>{scanning?scanProgress:"Eurojackpot-Quittung fotografieren oder auswählen"}</strong><span>Quittung mit gelben LOTTO-Rändern möglichst vollständig und scharf fotografieren. Das Foto wird nicht auf dem Server gespeichert.</span><input aria-label="Spielschein fotografieren" type="file" accept="image/*" capture="environment" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file);e.target.value="";}}/></label>
    {scanWarnings.length>0&&<div className="scan-review" role="status"><strong>Beim Prüfen beachten:</strong><ul>{scanWarnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
@@ -205,11 +214,30 @@ export default function MyGames({draws}:{draws:Draw[]}){
    <div className="date-tags">{dates.map(d=><span className="date-tag" key={d}><CalendarDays size={13}/>{readableDate(d)}<button aria-label={"Datum "+d+" entfernen"} onClick={()=>setDates(v=>v.filter(x=>x!==d))}>×</button></span>)}</div>
    <label className="field field-note">Notiz (optional)<input maxLength={500} placeholder="z. B. Annahmestelle oder Scheinbezeichnung" value={note} onChange={e=>setNote(e.target.value)}/></label>
    <p className="games-small">Der Gesamtpreis wird einmal pro Schein gezählt, auch wenn mehrere Termine ausgewählt sind. Die App kann den Annahmeschluss nicht prüfen.</p>
-   <div className="edit-actions"><button className="primary-btn" disabled={busy||scanning} onClick={()=>void save()}><Save size={17}/>{busy?"Speichere …":editingId?"Änderungen speichern":"Geprüften Spielschein speichern"}</button>{editingId&&<button className="outlined-btn" disabled={busy} onClick={clearForm}><X size={16}/> Abbrechen</button>}</div>
-  </div>}
+   <div className="edit-actions"><button className="primary-btn" disabled={busy||scanning} onClick={()=>void save()}><Save size={17}/>{busy?"Speichere …":editingId?"Änderungen speichern":"Geprüften Spielschein speichern"}</button>{<button className="outlined-btn" disabled={busy} onClick={()=>{if(mode==="editor")window.location.assign("/?tab=games");else clearForm();}}><X size={16}/> Abbrechen</button>}</div>
+  </div>;
+ if(mode==="editor")return <main className="ticket-editor-page">
+   <header className="ticket-editor-top"><a href="/?tab=games" className="outlined-btn"><X size={16}/> Zurück zu Meine Spiele</a><span>EUROJACKPOT · SPIELSCHEIN</span></header>
+   <div className="ticket-editor-shell">
+    <span className="eyebrow">FOKUSSIERTE ERFASSUNG</span>
+    <h1>{editId?"Spielschein bearbeiten":"Spielschein erfassen"}</h1>
+    <p className="ticket-editor-intro">{editId?"Passe die Angaben deines gespeicherten Spielscheins an.":"Fotografiere die Quittung und überprüfe anschließend alle erkannten Zahlen, Termine und Kosten."}</p>
+    {error&&<div className="warning" role="alert">{error}</div>}
+    {message&&<p className="games-note" role="status">{message}</p>}
+    {(!editId||editLoaded)&&formPanel}
+    {editId&&!editLoaded&&<div className="games-panel">Lade Spielschein …</div>}
+   </div>
+ </main>;
+ return <section className="games-view">
+  <div className="games-hero"><div><span className="eyebrow">PERSÖNLICHES ARCHIV</span><h1>Meine Spiele</h1><p>Spielscheine erfassen, Treffer kontrollieren und deine Ausgaben nachvollziehen.</p></div><button className="primary-btn" onClick={()=>window.location.assign("/games/new")}><Plus size={18}/>Spielschein erfassen</button></div>
+  <div className="stats games-stats">
+   <div className="stat"><div className="stat-top"><span>Gesamtausgaben</span><Coins size={17}/></div><strong>{currency(spent)}</strong><small>{tickets.length} erfasste Scheine</small></div>
+
+  </div>
+  {error&&<div className="warning">{error}</div>}{message&&<p className="games-note" role="status">{message}</p>}
   <div className="games-panel"><div className="games-title"><h2>Gespeicherte Spielscheine</h2><p>{checked} geprüfte Tippfeld-Ziehungen · Ohne vorhandene Ziehung kein Trefferstatus</p></div>
    {!tickets.length?<div className="empty">Noch keine Spielscheine gespeichert.</div>:tickets.map(t=><div className="ticket-card" key={t.id}>
-     <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" type="button" title="Schein bearbeiten" aria-label={"Spielschein vom "+readableDate(t.purchased_on)+" bearbeiten"} onClick={()=>startEdit(t)}><Pencil size={16}/></button><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
+     <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small><span className="ticket-compact-hits">{(()=>{const hits=ticketHitTotals(t);return hits.compared?hits.total+" richtige Einzelzahlen ("+hits.main+" Haupt- / "+hits.euro+" Eurozahlen)":"Treffer noch offen";})()}</span></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" type="button" title="Schein bearbeiten" aria-label={"Spielschein vom "+readableDate(t.purchased_on)+" bearbeiten"} onClick={()=>window.location.assign("/games/edit/"+t.id)}><Pencil size={16}/></button><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
      {expanded===t.id&&<div className="ticket-detail">{t.dates.map(d=><div className="ticket-draw" key={d}><div className="ticket-draw-header"><strong>Ziehung {readableDate(d)}</strong><span>{drawMap.has(d)?"Ergebnis verfügbar":"Noch kein Ergebnis im Archiv"}</span></div>
        {t.lines.map((line,i)=>{
         const draw=drawMap.get(d);
@@ -237,7 +265,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
   <div className="games-summary-grid">
    <div className="games-panel"><div className="games-title"><h2>Meine häufigsten Zahlen</h2><p>Häufigkeit je angekreuztem Tippfeld, nicht je Ziehung</p></div>
    <h3>Hauptzahlen</h3><Frequency data={freq.main.slice(0,10)}/><h3>Eurozahlen</h3><Frequency data={freq.euro.slice(0,6)}/></div>
-   <div className="games-panel"><div className="games-title"><h2>Gesamtausgaben</h2><p>Alle erfassten Eurojackpot-Scheine zusammen – unabhängig vom Kaufmonat.</p></div><div className="expense-total"><span>Ausgaben insgesamt</span><strong>{currency(spent)}</strong><small>Summe aus {tickets.length} Spielscheinen inklusive eingetragener Gebühren. Jeder Schein wird nur einmal gezählt.</small></div><div className="expense-detail"><span>Erfasste Auszahlungen</span><strong>{currency(paid)}</strong></div><div className="expense-detail"><span>Gesamtbilanz</span><strong>{currency(paid-spent)}</strong></div></div>
+   <div className="games-panel"><div className="games-title"><h2>Gesamtausgaben</h2><p>Alle erfassten Eurojackpot-Scheine, unabhängig vom Kaufmonat.</p></div><div className="expense-total"><span>Ausgaben insgesamt</span><strong>{currency(spent)}</strong><small>{tickets.length} Spielscheine, jeweils einmal gezählt.</small></div></div>
   </div>
   <p className="games-small">„Gewonnen“ basiert auf den Treffern und – sofern verfügbar – gespeicherten Gewinnquoten der jeweiligen Ziehung. Ohne verifizierte Quote steht „Quote ausstehend“. Die tatsächlichen Auszahlungen bleiben gesondert erfasst. Alle Angaben ohne Gewähr.</p>
  </section>;

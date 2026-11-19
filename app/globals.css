@@ -179,3 +179,85 @@
   .draw-row .ball{width:clamp(27px,8vw,37px);height:clamp(27px,8vw,37px);font-size:clamp(11px,3.1vw,13px);flex-shrink:0}
   .draw-row .plus{margin:0 1px;font-size:15px}
 }
+
+/* Clean editor route: remove unrelated dashboard content and limit accidental
+ * pinch gestures inside the form without disabling browser-level zoom. */
+.ticket-editor-page{min-height:100dvh;background:var(--bg);padding:22px 18px 70px;touch-action:pan-x pan-y}
+.ticket-editor-top{max-width:900px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:28px;border-bottom:1px solid var(--border);font-size:11px;color:#92a0b8;letter-spacing:1.5px}
+.ticket-editor-top .outlined-btn{text-decoration:none;white-space:nowrap}
+.ticket-editor-shell{max-width:780px;margin:45px auto 0}
+.ticket-editor-shell h1{font:700 clamp(32px,5.5vw,54px)/1.12 "Space Grotesk",sans-serif;letter-spacing:-1.5px;margin:12px 0}
+.ticket-editor-intro{color:#abb6c6;line-height:1.65;margin:0 0 30px}
+.ticket-editor-shell .games-panel{padding:clamp(16px,3vw,28px)}
+.ticket-editor-shell input,.ticket-editor-shell button{touch-action:manipulation}
+.ticket-editor-shell input{font-size:16px}
+.ticket-editor-shell .scan-preview img{max-height:450px}
+.ticket-compact-hits{display:block;margin-top:6px;color:#36d39c;font-size:11px;line-height:1.4;font-weight:700}
+.games-stats{grid-template-columns:minmax(0,1fr)}
+.games-stats .stat{max-width:none}
+.generator-accordion{border:1px solid #354359;background:#0e1727;border-radius:12px;margin:14px 0;overflow:hidden}
+.generator-accordion>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 18px;color:#e8eef8;cursor:pointer;font-size:14px;font-weight:700}
+.generator-accordion>summary::-webkit-details-marker{display:none}
+.generator-accordion>summary>span{display:flex;align-items:center;gap:9px}
+.generator-accordion>summary>span:last-child{font-size:12px;color:#abb8c7}
+.generator-accordion[open]>summary>span:last-child svg{transform:rotate(180deg)}
+.generator-accordion-body{padding:12px 18px 20px;border-top:1px solid #29384e}
+.generator-rule-list{padding:0;margin:12px 0;list-style:none;display:grid;gap:12px}
+.generator-rule{display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:11px 0}
+.generator-rule input{margin-top:4px;accent-color:#f5c34b;width:17px;height:17px;flex-shrink:0}
+.generator-rule span{display:flex;flex-direction:column;gap:5px;flex:1}
+.generator-rule strong{font-size:13px}
+.generator-rule small{color:#95a3b9;font-size:12px;line-height:1.5}
+.generator-rule>svg{color:#36d39c}
+.generator-number-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
+.generator-number{min-width:0;aspect-ratio:1;border-radius:9px;border:1px solid #45526a;background:#202b3c;color:#f1f5fa;font-weight:700;font-size:12px;touch-action:manipulation}
+.generator-number.euro{background:#514022;color:#f5cc65}
+.generator-number.excluded{background:#524128;border-color:#e9a647;color:#ffd489;text-decoration:line-through}
+.generator-number.automatic{background:#5a2b36;border-color:#ff8794;color:#ffd8df;text-decoration:line-through;opacity:1;cursor:not-allowed}
+.generator-number[disabled]{opacity:1}
+.generator-filter-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:22px 0 12px}
+.generator-filter-heading strong{font-size:13px}
+.generator-filter-heading span{font-size:12px;color:#abb6c6}
+.generator-clear{margin-top:20px}
+.generator-recent-filter{padding:12px 14px;background:#151f30;border-radius:10px}
+.generator-recent-filter .field{max-width:260px;margin:12px 0}
+.generator-create{margin-top:20px}
+.generator-results h3{font-size:16px;margin:12px 0 0}
+.generated-metrics{color:#aeb8c7;font-size:11px}
+.generator-frequency-grid,.frequency-columns{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:24px}
+.generator-frequency-grid h3,.frequency-columns h3{font-size:16px;margin:0 0 18px}
+.combo-list{display:grid;gap:10px}
+.combo-row{display:flex;justify-content:space-between;gap:14px;padding:11px 12px;background:#121d2d;border:1px solid #2d3b50;border-radius:8px;color:#cfd8e5;font-size:13px}
+.combo-row strong{color:#f5c34b}
+.freq-number.euro-number{background:#f5c34b}
+.frequencies-expanded{grid-template-columns:1fr;gap:22px}
+.generator-odds{border-color:#4d5a70}
+.generator-odds h2{font:700 23px "Space Grotesk",sans-serif}
+.generator-odds p{color:#aeb8c8;font-size:14px;line-height:1.7}
+/* Compact number rows on every screen and in every context. */
+.balls,.ball-group,.ticket-balls{display:flex;align-items:center;flex-wrap:nowrap;min-width:0;max-width:100%;gap:clamp(2px,.6vw,6px)}
+.balls{width:max-content;max-width:100%}
+.ball,.ticket-ball{flex-shrink:0}
+.ticket-balls .ticket-ball{width:clamp(23px,6.5vw,31px);height:clamp(23px,6.5vw,31px);font-size:clamp(10px,2.7vw,12px)}
+.ticket-balls .ticket-divider,.balls .plus{margin:0 2px;padding:0;font-size:clamp(11px,2.8vw,16px)}
+.feature-body,.draw-row,.ticket-line-result,.generated-row{min-width:0}
+@media(max-width:680px){
+ .featured,.history{overflow:hidden}
+ .feature-body .balls,.draw-row .balls{gap:2px;flex-wrap:nowrap;max-width:100%}
+ .feature-body .ball-group,.draw-row .ball-group{gap:2px;min-width:0}
+ .feature-body .ball,.draw-row .ball{width:clamp(23px,7.2vw,31px);height:clamp(23px,7.2vw,31px);font-size:clamp(10px,2.7vw,12px);flex:0 0 auto}
+ .feature-body .plus,.draw-row .plus{margin:0 2px;font-size:13px}
+ .ticket-balls{flex-wrap:nowrap;gap:2px}
+ .ticket-balls .ticket-ball{width:clamp(23px,6.7vw,29px);height:clamp(23px,6.7vw,29px);flex:0 0 clamp(23px,6.7vw,29px);font-size:10px}
+ .ticket-balls .ticket-divider{margin:0 1px}
+ .generated-row .ticket-balls{width:auto;flex:1 1 100%;justify-content:flex-start}
+ .ticket-line-result .ticket-balls{order:2;width:auto;flex:1 1 100%;justify-content:flex-start}
+ .feature-body{align-items:flex-start}
+ .generator-number-grid{grid-template-columns:repeat(7,minmax(0,1fr))}
+ .frequency-columns,.generator-frequency-grid{grid-template-columns:1fr;gap:20px}
+ .ticket-editor-top span{display:none}
+}
+@media(max-width:360px){.feature-body .ball,.draw-row .ball{width:23px;height:23px}.ticket-balls .ticket-ball{width:22px;height:22px;flex-basis:22px}}
+
+/* Disable accidental two-finger pinch gestures in the app content; browser-level zoom remains available. */
+.shell,.ticket-editor-page{touch-action:pan-x pan-y}
