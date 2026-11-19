@@ -49,6 +49,7 @@ function MatchBalls({line,draw}:{line:Line;draw?:Draw}){
 }
 export default function MyGames({draws}:{draws:Draw[]}){
  const [tickets,setTickets]=useState<Ticket[]>([]);
+ const [quotas,setQuotas]=useState<Record<string,Record<string,number>>>({});
  const [busy,setBusy]=useState(false),[scanning,setScanning]=useState(false),[scanProgress,setScanProgress]=useState("");
  const [message,setMessage]=useState(""),[error,setError]=useState("");
  const [scanWarnings,setScanWarnings]=useState<string[]>([]);
@@ -62,7 +63,13 @@ export default function MyGames({draws}:{draws:Draw[]}){
    try{const r=await fetch("/api/games",{cache:"no-store"});const result=await r.json();if(!r.ok)throw new Error(result.error);setTickets(result.tickets||[]);}
    catch(e){setError(e instanceof Error?e.message:"Spiele nicht verfügbar");}
  }
- useEffect(()=>{void load();},[]);
+ useEffect(()=>{void load();void loadPrizes();},[]);
+ async function loadPrizes(){
+   try {
+    const r=await fetch("/api/prizes",{cache:"no-store"});
+    if(r.ok){const json=await r.json();setQuotas(json.quotas||{});}
+   }catch{/* Display unavailable quota instead of claiming a payout. */}
+ }
  useEffect(()=>()=>{if(receiptPreview)URL.revokeObjectURL(receiptPreview);},[receiptPreview]);
  async function scan(file?:File) {
   if(!file)return;
@@ -204,7 +211,24 @@ export default function MyGames({draws}:{draws:Draw[]}){
    {!tickets.length?<div className="empty">Noch keine Spielscheine gespeichert.</div>:tickets.map(t=><div className="ticket-card" key={t.id}>
      <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" type="button" title="Schein bearbeiten" aria-label={"Spielschein vom "+readableDate(t.purchased_on)+" bearbeiten"} onClick={()=>startEdit(t)}><Pencil size={16}/></button><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
      {expanded===t.id&&<div className="ticket-detail">{t.dates.map(d=><div className="ticket-draw" key={d}><div className="ticket-draw-header"><strong>Ziehung {readableDate(d)}</strong><span>{drawMap.has(d)?"Ergebnis verfügbar":"Noch kein Ergebnis im Archiv"}</span></div>
-       {t.lines.map((line,i)=>{const draw=drawMap.get(d);const mains=draw?line.main_numbers.filter(n=>draw.main_numbers.includes(n)).length:0;const euros=draw?line.euro_numbers.filter(n=>draw.euro_numbers.map(Number).includes(Number(n))).length:0;return <div className="ticket-line-result" key={i}><small>Feld {i+1}</small><MatchBalls line={line} draw={draw}/><span className="match-count">{draw?mains+" + "+euros:"Offen"}</span></div>;})}
+       {t.lines.map((line,i)=>{
+        const draw=drawMap.get(d);
+        const mains=draw?line.main_numbers.filter(n=>draw.main_numbers.map(Number).includes(Number(n))).length:0;
+        const euros=draw?line.euro_numbers.filter(n=>draw.euro_numbers.map(Number).includes(Number(n))).length:0;
+        const classes:Record<string,number>={"5+2":1,"5+1":2,"5+0":3,"4+2":4,"4+1":5,"3+2":6,"4+0":7,"2+2":8,"3+1":9,"3+0":10,"1+2":11,"2+1":12};
+        const prizeClass=draw?classes[mains+"+"+euros]:undefined;
+        const prize=prizeClass?quotas[d]?.[String(prizeClass)]:undefined;
+        return <div className="ticket-line-result" key={i}>
+          <small>Feld {i+1}</small>
+          <MatchBalls line={line} draw={draw}/>
+          <div className="ticket-result-meta">
+           <span className="match-count">{draw?mains+" + "+euros:"Offen"}</span>
+           {draw?<span className={"won-amount"+(prize!==undefined&&prize>0?" positive":"")}>
+            Gewonnen: {prizeClass===undefined?"0,00 €":prize!==undefined?currency(prize):"Quote ausstehend"}
+           </span>:<span className="won-amount">Gewonnen: noch offen</span>}
+          </div>
+        </div>;
+       })}
        {drawMap.has(d)&&<div className="winning-reference">Gezogen: {drawMap.get(d)!.main_numbers.join(" · ")} + {drawMap.get(d)!.euro_numbers.join(" · ")}</div>}
        <PayoutInput date={d} ticketId={t.id} recorded={t.payouts.find(p=>p.date===d)?.amount_cents} onSave={savePayout}/>
      </div>)}</div>}
@@ -215,7 +239,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
    <h3>Hauptzahlen</h3><Frequency data={freq.main.slice(0,10)}/><h3>Eurozahlen</h3><Frequency data={freq.euro.slice(0,6)}/></div>
    <div className="games-panel"><div className="games-title"><h2>Gesamtausgaben</h2><p>Alle erfassten Eurojackpot-Scheine zusammen – unabhängig vom Kaufmonat.</p></div><div className="expense-total"><span>Ausgaben insgesamt</span><strong>{currency(spent)}</strong><small>Summe aus {tickets.length} Spielscheinen inklusive eingetragener Gebühren. Jeder Schein wird nur einmal gezählt.</small></div><div className="expense-detail"><span>Erfasste Auszahlungen</span><strong>{currency(paid)}</strong></div><div className="expense-detail"><span>Gesamtbilanz</span><strong>{currency(paid-spent)}</strong></div></div>
   </div>
-  <p className="games-small">Trefferanzeigen zeigen ausschließlich passende Zahlen, keine bestätigte Gewinnklasse oder Auszahlung. Gewinnquoten und tatsächliche Auszahlungen sind gesondert zu prüfen. Alle Angaben ohne Gewähr.</p>
+  <p className="games-small">„Gewonnen“ basiert auf den Treffern und – sofern verfügbar – gespeicherten Gewinnquoten der jeweiligen Ziehung. Ohne verifizierte Quote steht „Quote ausstehend“. Die tatsächlichen Auszahlungen bleiben gesondert erfasst. Alle Angaben ohne Gewähr.</p>
  </section>;
 }
 function Frequency({data}:{data:{number:number;count:number}[]}){

@@ -1,0 +1,29 @@
+name: Eurojackpot results sync
+on:
+  schedule:
+    - cron: '30 20,21,22,23 * * 2,5'
+    - cron: '15 7 * * 3,6'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  update-results:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call authenticated sync endpoint
+        env:
+          APP_URL: ${{ secrets.EUROJACKPOT_APP_URL }}
+          CRON_SECRET: ${{ secrets.EUROJACKPOT_CRON_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "Configure EUROJACKPOT_APP_URL and EUROJACKPOT_CRON_SECRET repository secrets first."
+            exit 1
+          fi
+          curl --fail --show-error --silent \
+            --max-time 80 \
+            --retry 2 \
+            --retry-delay 10 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL%/}/api/cron/sync"

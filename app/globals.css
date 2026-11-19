@@ -115,3 +115,23 @@
 .expense-detail strong{font-size:16px;color:#edf2f9}
 .ticket-heading-end .small-btn:hover,.ticket-heading-end .small-btn:focus-visible{color:#f5c34b;border-color:#a88a3c}
 @media(max-width:460px){.ticket-heading-end{flex-wrap:wrap;justify-content:flex-end}.ticket-heading-end>strong{flex-basis:100%;text-align:right}.edit-actions>button{flex:1}}
+
+.random-view{padding:52px 0 35px}
+.generator-settings{display:grid;grid-template-columns:minmax(0,2fr) minmax(140px,1fr);gap:14px;margin:20px 0}
+.generator-settings .field select{height:46px;background:#0b1422;border:1px solid #39475f;border-radius:9px;padding:0 12px;color:#f0f3f7}
+.generator-description{display:flex;align-items:center;gap:10px;color:#c5cad4;line-height:1.6;font-size:13px;margin-bottom:20px}
+.generator-description svg{flex-shrink:0;color:var(--accent)}
+.generator-results{display:grid;gap:12px;margin:22px 0 0}
+.generated-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px;background:#0c1522;border:1px solid #303d52;border-radius:11px}
+.generated-row strong{font-size:13px;white-space:nowrap}
+.generated-row .ticket-balls{order:initial;width:auto;flex:1;justify-content:center}
+.pattern-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.pattern-box{display:flex;flex-direction:column;gap:10px;border:1px solid #394357;background:#0d1624;border-radius:12px;padding:20px}
+.pattern-box small{font-size:12px;line-height:1.5;color:#aeb8c8}
+.pattern-box strong{font:700 30px "Space Grotesk",sans-serif;color:#f5c34b}
+.pattern-box span{font-size:12px;color:#8798ae}
+.ticket-result-meta{display:flex;flex-direction:column;align-items:flex-end;gap:5px;min-width:140px}
+.won-amount{color:#b7c5d7;font-size:12px;white-space:nowrap}
+.won-amount.positive{color:#37d59c;font-weight:800}
+@media(max-width:780px){.generated-row{flex-wrap:wrap}.generated-row .ticket-balls{order:initial;width:100%;flex-basis:100%;justify-content:flex-start}.ticket-result-meta{align-items:flex-start}}
+@media(max-width:540px){.generator-settings,.pattern-grid{grid-template-columns:1fr}.dashboard-tabs{overflow-x:auto}.dashboard-tabs button{white-space:nowrap}.generated-row .ticket-ball{width:30px;height:30px;font-size:12px}}

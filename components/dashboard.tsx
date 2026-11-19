@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import MyGames from "./my-games";
+import RandomGenerator from "./random-generator";
 import LogoutButton from "./logout-button";
-import { BookOpen, Ticket } from "lucide-react";
+import { BookOpen, Ticket, Dices } from "lucide-react";
 import { CalendarDays, ChevronLeft, ChevronRight, Database, RefreshCcw, Search, Trophy, Clock3, ChartNoAxesColumn } from "lucide-react";
 type Draw={date:string;date_de:string;main_numbers:number[];euro_numbers:number[]};
 type ResponseData={draws:Draw[];lastSync:string|null;syncError:string|null;source?:string};
@@ -11,7 +12,7 @@ const ordered=(a:number[])=>[...a].sort((x,y)=>x-y);
 function Balls({draw}:{draw:Draw}){return <div className="balls"><div className="ball-group">{ordered(draw.main_numbers).map(n=><span key={n} className="ball">{n}</span>)}</div><span className="plus">+</span><div className="ball-group">{ordered(draw.euro_numbers).map(n=><span key={n} className="ball euro">{n}</span>)}</div></div>;}
 export default function Dashboard(){
  const [data,setData]=useState<ResponseData>({draws:[],lastSync:null,syncError:null});
- const [tab,setTab]=useState<"history"|"games">("history");
+ const [tab,setTab]=useState<"history"|"games"|"random">("history");
  const [loading,setLoading]=useState(true);const [refreshing,setRefreshing]=useState(false);
  const [selectedDate,setSelectedDate]=useState("");const [year,setYear]=useState("all");const [search,setSearch]=useState("");
  const [page,setPage]=useState(0);const pageSize=12;
@@ -31,8 +32,8 @@ export default function Dashboard(){
  function reset(){setYear("all");setSelectedDate("");setSearch("");setPage(0);}
  return <main className="shell">
   <header className="topbar"><div className="brand"><span className="brand-logo"><Trophy size={19}/></span><span>EURO<span className="brand-accent">JACKPOT</span><small>ERGEBNISARCHIV</small></span></div><div className="top-right"><span className="live"><span className="live-dot"/>Datenarchiv</span><LogoutButton/><button className="ghost icon-btn" title="Daten aktualisieren" onClick={()=>void load(true)} disabled={refreshing}><RefreshCcw size={17} className={refreshing?"spin":""}/><span>Aktualisieren</span></button></div></header>
-  <nav className="dashboard-tabs" aria-label="Bereiche"><button className={tab==="history"?"active":""} onClick={()=>setTab("history")}><BookOpen size={18}/> Ziehungshistorie</button><button className={tab==="games"?"active":""} onClick={()=>setTab("games")}><Ticket size={18}/> Meine Spiele</button></nav>
-  {tab==="games"?<MyGames draws={data.draws}/>:<>
+  <nav className="dashboard-tabs" aria-label="Bereiche"><button className={tab==="history"?"active":""} onClick={()=>setTab("history")}><BookOpen size={18}/> Ziehungshistorie</button><button className={tab==="games"?"active":""} onClick={()=>setTab("games")}><Ticket size={18}/> Meine Spiele</button><button className={tab==="random"?"active":""} onClick={()=>setTab("random")}><Dices size={18}/> Zufallsschein</button></nav>
+  {tab==="games"?<MyGames draws={data.draws}/>:tab==="random"?<RandomGenerator draws={data.draws}/>:<>
   <section className="intro"><div className="eyebrow">ZAHLEN. DATEN. ZIEHUNGEN.</div><h1>Jede Ziehung.<br/><span>Ein Blick zurück.</span></h1><p>Durchsuche die Eurojackpot-Gewinnzahlen nach Datum und entdecke die gesamte verfügbare Historie.</p></section>
   <section className="stats"><div className="stat"><div className="stat-top"><span>Erfasste Ziehungen</span><Database size={18}/></div><strong>{data.draws.length.toLocaleString("de-DE")}</strong><small>In der PostgreSQL-Datenbank</small></div><div className="stat"><div className="stat-top"><span>Letzte Ziehung</span><CalendarDays size={18}/></div><strong>{newest?.date_de||"—"}</strong><small>{newest?format(newest.date).split(",")[0]:"Noch keine Daten"}</small></div><div className="stat"><div className="stat-top"><span>Datenstand</span><Clock3 size={18}/></div><strong>{data.lastSync?new Date(data.lastSync).toLocaleDateString("de-DE"):"—"}</strong><small>{data.lastSync?"Letzter erfolgreicher Import":"Noch nicht synchronisiert"}</small></div></section>
   {data.syncError&&<div className="warning">Datenimport: {data.syncError}. {data.draws.length?"Gespeicherte Daten werden weiterhin angezeigt.":"Bitte Quelle und PostgreSQL-Verbindung prüfen."}</div>}

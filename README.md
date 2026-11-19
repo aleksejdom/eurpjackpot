@@ -55,3 +55,26 @@ In **Meine Spiele → Gespeicherte Spielscheine** über das Stiftsymbol einen vo
 Die Bearbeitung nutzt **PUT /api/games/:id** mit Better-Auth-Sitzungsprüfung und derselben serverseitigen Prüfung wie beim Anlegen. PostgreSQL aktualisiert alle Daten **in einer Transaktion**, ohne den Spielschein zu duplizieren. Auszahlungen zu beibehaltenen Ziehungsterminen bleiben erhalten; beim Entfernen eines Ziehungsdatums werden zugehörige Auszahlungen nach Rückfrage ebenfalls entfernt. Eine Korrektur von Tippzahlen oder Datum aktualisiert automatisch die Trefferanzeige und die Zahlenstatistik.
 
 **Ausgaben:** Die monatliche Übersicht wurde entfernt. Die Seite zeigt die **Summe aller erfassten Scheine**, unabhängig vom Kaufmonat, sowie die erfassten Auszahlungen und die Gesamtbilanz. Jeder Schein zählt einmal, auch bei mehreren Ziehungsterminen.
+
+## Zufallsschein und Musterstatistiken
+
+Unter **Zufallsschein** gibt es vier Auswahlstrategien: **Reiner Zufall**, nach historischen Häufigkeiten gewichtet, mit Präferenz für Zahlen aus dem Zeitraum **2–4 Wochen** vor der neuesten gespeicherten Ziehung und Kombinationen mit **benachbarten Hauptzahlen**. Erzeuge 1 bis 10 Felder und kopiere die Tipps.
+
+Die historische Auswertung zeigt u. a. den Anteil der Ziehungen mit benachbarten Hauptzahlen, mit Wiederholungen aus dem 2–4-Wochen-Rückblick sowie die Top-10-Hauptzahlen. Alle Zahlen werden aus dem vorhandenen Eurojackpot-Archiv berechnet, ohne Prognoseversprechen.
+
+**Wichtig:** Jede gültige Kombination hat bei einer neuen Ziehung dieselbe Jackpotchance (1 : 139.838.160). Gewichtet erzeugte Vorschläge besitzen keinen nachgewiesenen Vorteil. Generierte Zahlen sind **keine gekauften Spielscheine** und werden nicht als Ausgaben erfasst.
+
+## Automatische Dienstag-/Freitag-Aktualisierung
+
+Die App besitzt einen serverseitigen Abrufendpunkt `GET /api/cron/sync` mit geheimem Bearer-Token. Die GitHub-Action `.github/workflows/sync-eurojackpot.yml` ruft ihn dienstags/freitags mehrmals am Abend und zusätzlich am Folgemorgen auf. **Die Zeitsteuerung ist erst aktiv, wenn beide GitHub Repository Secrets eingerichtet sind:**
+
+- `EUROJACKPOT_APP_URL`: exakte öffentliche HTTPS-URL der App, beispielsweise `https://euro.ad-d.info`
+- `EUROJACKPOT_CRON_SECRET`: derselbe mindestens 32 Zeichen lange Wert wie die geschützte Coolify-Runtime-Variable `CRON_SECRET`.
+
+Nach Hinterlegen der Secrets im GitHub-Repository unter Settings → Secrets and variables → Actions kann die Action manuell über Actions → Eurojackpot results sync → Run workflow getestet werden. Geplante GitHub-Actions-Ausführungen können zeitlich verzögert sein. Ein Abruf garantiert nicht, dass die externe Quelle zu diesem Zeitpunkt schon aktualisiert wurde.
+
+## Gewinnbeträge pro Tippfeld
+
+Die App ermittelt eine der 12 Gewinnklassen nach Hauptzahl- und Eurozahlentreffern und zeigt **Gewonnen: 0,00 €**, wenn keine Gewinnklasse erreicht wurde. Bei einer Gewinnklasse ohne gespeicherte Auszahlungsquote zeigt sie **Gewonnen: Quote ausstehend**, nicht einen geschätzten Eurobetrag. Ist für Datum und Klasse eine passende Quote gespeichert, erscheint der Betrag in Euro.
+
+`eurojackpot_prize_quotas` speichert bestätigte Daten nach Datum und Gewinnklasse. `EUROJACKPOT_QUOTAS_URL` ist eine **optionale** HTTPS-JSON-Quelle mit dem in `lib/prizes.ts` unterstützten Quotenformat. Eine verlässlich kompatible, aktuelle Quelle muss vor der Aktivierung noch geprüft werden; es wird keine unbestätigte Quellenadresse fest einkodiert. Ohne Quotenquelle bleiben Gewinnbeträge bei gewinnberechtigten Tipps als **ausstehend** gekennzeichnet. Manuell erfasste tatsächliche Auszahlungen bleiben davon getrennt.
