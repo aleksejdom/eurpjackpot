@@ -1,0 +1,48 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {parseEurojackpotReceipt} from "../lib/receipt-parser.ts";
+
+const sample=`SPIELQUITTUNG
+14.11.26                               19:45:43
+EURO JACKPOT
+Spiel 1
+5/50: 1 6 25 29 47
+2/12: 4 11
+Spiel 2
+5/50: 5 13 14 28 46
+2/12: 9 11
+Spiel 3
+5/50: 22 28 29 34 40
+2/12: 3 7
+Spiel 4
+5/50: 8 12 41 43 46
+2/12: 7 8
+GlücksSpirale NEIN
+Spiel 77 NEIN
+Laufzeit: 1 Woche
+Eurojackpot:
+17.11.26 Di
+Betrag 8,35 €
+`;
+
+test("Lotto BW receipt: four fields, amount, purchased and draw dates",()=>{
+ const s=parseEurojackpotReceipt(sample);
+ assert.equal(s.purchaseDate,"2026-11-14");
+ assert.equal(s.amount,"8,35");
+ assert.deepEqual(s.drawDates,["2026-11-17"]);
+ assert.equal(s.weeks,1);
+ assert.equal(s.lines.length,4);
+ assert.deepEqual(s.lines.map(l=>l.main),["1 6 25 29 47","5 13 14 28 46","22 28 29 34 40","8 12 41 43 46"]);
+ assert.deepEqual(s.lines.map(l=>l.euro),["4 11","9 11","3 7","7 8"]);
+ assert.ok(s.lines.every(l=>l.complete));
+});
+test("Reject an ambiguous OCR field instead of guessing missing numbers",()=>{
+ const s=parseEurojackpotReceipt("EURO JACKPOT\nSpiel 1\n5/50: 1 6 25 29\n2/12: 4 11");
+ assert.equal(s.lines[0].complete,false);
+ assert.ok(s.warnings.some(w=>w.includes("unvollständig")));
+});
+test("Reject invalid Gregorian dates and unusual weekday",()=>{
+ const s=parseEurojackpotReceipt("SPIELQUITTUNG\n31.02.26\nEURO JACKPOT\nSpiel 1\n5/50: 1 6 25 29 47\n2/12: 4 11\nEurojackpot: 18.11.26 Mi\nBetrag 8,35 €");
+ assert.equal(s.purchaseDate,null);
+ assert.deepEqual(s.drawDates,[]);
+});

@@ -1,5 +1,7 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
+import { parseEurojackpotReceipt } from "@/lib/receipt-parser";
+import { prepareReceiptImage } from "@/lib/receipt-image";
 import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, RefreshCcw, Save, Coins, CalendarDays } from "lucide-react";
 type Line={main_numbers:number[];euro_numbers:number[]};
 type Ticket={id:string;purchased_on:string;total_cents:number;note:string;created_at:string;dates:string[];lines:Line[];payouts:{date:string;amount_cents:number}[]};
@@ -41,6 +43,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
  const [tickets,setTickets]=useState<Ticket[]>([]);
  const [busy,setBusy]=useState(false),[scanning,setScanning]=useState(false),[scanProgress,setScanProgress]=useState("");
  const [message,setMessage]=useState(""),[error,setError]=useState("");
+ const [scanWarnings,setScanWarnings]=useState<string[]>([]);
  const [purchase,setPurchase]=useState(""),[amount,setAmount]=useState(""),[note,setNote]=useState("");
  const [lines,setLines]=useState<FormLine[]>([emptyLine()]),[date,setDate]=useState(""),[dates,setDates]=useState<string[]>([]);
  const [showForm,setShowForm]=useState(false),[expanded,setExpanded]=useState<string|null>(null);
@@ -54,15 +57,39 @@ export default function MyGames({draws}:{draws:Draw[]}){
    if(!file)return;
    if(file.size>12*1024*1024){setError("Foto darf höchstens 12 MB groß sein");return;}
    if(!file.type.startsWith("image/")){setError("Bitte ein Foto auswählen");return;}
-   setScanning(true);setError("");setScanProgress("Foto wird lokal erkannt …");
+   setScanning(true);setError("");setScanWarnings([]);setMessage("");
+   setScanProgress("Quittung wird für die Texterkennung vorbereitet …");
    try{
      const {recognize}=await import("tesseract.js");
-     const result=await recognize(file,"eng",{logger:m=>{if(m.status==="recognizing text")setScanProgress("Texterkennung: "+Math.round((m.progress||0)*100)+" %");}});
-     const extracted=parseOcr(result.data.text);
-     if(extracted.length){setLines(extracted);setMessage(extracted.length+" mögliche Tippfelder erkannt. Bitte jede Zahl mit dem Originalschein vergleichen und Datum sowie Preis selbst bestätigen.");}
-     else {setMessage("Keine eindeutig erkennbaren Tippfelder. Bitte die Zahlen manuell eintragen.");setLines([emptyLine()]);}
+     const prepared=await prepareReceiptImage(file);
+     const options={logger:(m:{status:string;progress:number})=>{
+       if(m.status==="recognizing text")setScanProgress("Texterkennung: "+Math.round((m.progress||0)*100)+" %");
+     }};
+     const first=await recognize(prepared,"eng",options);
+     let extracted=parseEurojackpotReceipt(first.data.text);
+     // A second pass on the unprocessed photo helps when thresholding loses faint digits.
+     if(!extracted.lines.length || extracted.lines.some(l=>!l.complete) || !extracted.drawDates.length){
+       if(prepared!==file){
+         setScanProgress("Zweiter Erkennungsversuch …");
+         const second=await recognize(file,"eng",options);
+         const alternative=parseEurojackpotReceipt(second.data.text);
+         const score=(x:typeof extracted)=>x.lines.filter(l=>l.complete).length*5+x.drawDates.length*2+Number(!!x.purchaseDate)+Number(!!x.amount);
+         if(score(alternative)>score(extracted))extracted=alternative;
+       }
+     }
+     setScanWarnings(extracted.warnings);
+     if(extracted.lines.length){
+       // Incomplete lines remain visible, so the user can correct them instead of silently losing data.
+       setLines(extracted.lines.map(l=>({main:l.main,euro:l.euro})));
+     }else setLines([emptyLine()]);
+     setPurchase(extracted.purchaseDate||"");
+     setDates(extracted.drawDates);
+     setAmount(extracted.amount||"");
+     setMessage(extracted.lines.length
+       ?extracted.lines.length+" Spiel(e) erkannt. Kaufdatum, Ziehungen und Betrag wurden soweit möglich vorausgefüllt. Bitte ALLE Daten mit dem Foto vergleichen."
+       :"Keine zuverlässigen Tippfelder erkannt. Bitte Zahlen und Daten manuell eintragen.");
      setShowForm(true);
-   }catch(e){setError("Texterkennung nicht verfügbar. Bitte Zahlen manuell eintragen.");}
+   }catch(e){setError("Texterkennung fehlgeschlagen. Bitte Zahlen und Daten manuell eintragen.");setShowForm(true);}
    finally{setScanning(false);setScanProgress("");}
  }
  function updateLine(i:number,field:keyof FormLine,value:string){setLines(v=>v.map((line,j)=>i===j?{...line,[field]:value}:line));}
@@ -122,8 +149,9 @@ export default function MyGames({draws}:{draws:Draw[]}){
   </div>
   {error&&<div className="warning">{error}</div>}{message&&<p className="games-note" role="status">{message}</p>}
   {showForm&&<div className="games-panel">
-   <div className="games-title"><h2>Neuen Schein erfassen</h2><p>OCR macht nur Vorschläge. Verifiziere alle Tippfelder, Termine und Preise anhand des Scheins.</p></div>
-   <label className="capture"><Camera size={24}/><strong>{scanning?scanProgress:"Schein fotografieren oder Foto auswählen"}</strong><span>Die Texterkennung läuft im Browser. Das Foto wird nicht auf dem Server gespeichert.</span><input aria-label="Spielschein fotografieren" type="file" accept="image/*" capture="environment" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file);e.target.value="";}}/></label>
+   <div className="games-title"><h2>Neuen Schein erfassen</h2><p>Die App erkennt Spielnummern, 5/50, 2/12, Kaufdatum, Eurojackpot-Ziehungsdatum, Laufzeit und Betrag soweit lesbar. Prüfe alle Vorschläge sorgfältig.</p></div>
+   <label className="capture"><Camera size={24}/><strong>{scanning?scanProgress:"Eurojackpot-Quittung fotografieren oder auswählen"}</strong><span>Quittung mit gelben LOTTO-Rändern möglichst vollständig und scharf fotografieren. Das Foto wird nicht auf dem Server gespeichert.</span><input aria-label="Spielschein fotografieren" type="file" accept="image/*" capture="environment" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file);e.target.value="";}}/></label>
+   {scanWarnings.length>0&&<div className="scan-review" role="status"><strong>Beim Prüfen beachten:</strong><ul>{scanWarnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
    <div className="games-form-grid"><label className="field">Kaufdatum<input type="date" value={purchase} onChange={e=>setPurchase(e.target.value)}/></label><label className="field">Gesamtpreis in € (inkl. Gebühren)<input type="text" inputMode="decimal" placeholder="z. B. 12,50" value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>
    <div className="games-subtitle"><h3>Tippfelder</h3><span>5 Hauptzahlen + 2 Eurozahlen je Feld</span></div>
    {lines.map((line,i)=><div className="line-editor" key={i}><span className="line-index">{i+1}</span><label className="field">Hauptzahlen<input value={line.main} placeholder="5 12 23 34 48" onChange={e=>updateLine(i,"main",e.target.value)}/></label><label className="field euro-input">Eurozahlen<input value={line.euro} placeholder="2 9" onChange={e=>updateLine(i,"euro",e.target.value)}/></label><button aria-label={"Tippfeld "+(i+1)+" entfernen"} className="small-btn" disabled={lines.length===1} onClick={()=>setLines(v=>v.filter((_,j)=>i!==j))}><Trash2 size={16}/></button></div>)}

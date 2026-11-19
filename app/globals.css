@@ -78,3 +78,5 @@
  .ticket-heading-end{gap:5px}.ticket-heading-end .small-btn{width:32px}
  .payout-row{flex-wrap:wrap}
 }
+
+.scan-review{border:1px solid #8b743b;background:#302a1c;color:#f7dfaa;padding:14px 18px;border-radius:10px;margin:10px 0 21px;font-size:13px;line-height:1.6}.scan-review ul{padding-left:18px;margin:7px 0 0}
