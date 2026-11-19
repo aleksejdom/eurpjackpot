@@ -78,6 +78,45 @@ export async function createTicket(input:unknown):Promise<string>{
     return id;
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }
+/** Update an existing ticket atomically; keep payouts for dates that remain selected. */
+export async function updateTicket(id:string,input:unknown):Promise<void>{
+  if(!/^\\d{1,18}$/.test(id))throw new Error("Ungültige Schein-ID");
+  const ticket=validateTicket(input);
+  await ready();
+  const client:PoolClient=await database().connect();
+  try{
+    await client.query("BEGIN");
+    const row=await client.query(
+      "UPDATE ej_tickets SET purchased_on=$2::date,total_cents=$3,note=$4 WHERE id=$1::bigint RETURNING id",
+      [id,ticket.purchased_on,ticket.total_cents,ticket.note]
+    );
+    if(!row.rowCount)throw new Error("Spielschein nicht gefunden");
+    // First remove dates that are no longer selected (their payouts cascade),
+    // and preserve records for all dates that remain selected.
+    await client.query(
+      "DELETE FROM ej_ticket_dates WHERE ticket_id=$1::bigint AND NOT (draw_date=ANY($2::date[]))",
+      [id,ticket.dates]
+    );
+    for(const drawDate of ticket.dates){
+      await client.query(
+        "INSERT INTO ej_ticket_dates(ticket_id,draw_date) VALUES($1::bigint,$2::date) ON CONFLICT DO NOTHING",
+        [id,drawDate]
+      );
+    }
+    await client.query("DELETE FROM ej_ticket_lines WHERE ticket_id=$1::bigint",[id]);
+    for(const [position,line] of ticket.lines.entries()){
+      await client.query(
+        "INSERT INTO ej_ticket_lines(ticket_id,position,main_numbers,euro_numbers) VALUES($1::bigint,$2,$3::integer[],$4::integer[])",
+        [id,position+1,line.main_numbers,line.euro_numbers]
+      );
+    }
+    await client.query("COMMIT");
+  }catch(error){
+    await client.query("ROLLBACK");
+    throw error;
+  }finally{client.release();}
+}
+
 export async function listTickets():Promise<Ticket[]> {
   await ready();
   const result=await database().query<{
@@ -88,7 +127,7 @@ export async function listTickets():Promise<Ticket[]> {
     COALESCE((SELECT array_agg(to_char(d.draw_date,'YYYY-MM-DD') ORDER BY d.draw_date) FROM ej_ticket_dates d WHERE d.ticket_id=t.id),ARRAY[]::text[]) AS dates,
     COALESCE((SELECT json_agg(json_build_object('main_numbers',l.main_numbers,'euro_numbers',l.euro_numbers) ORDER BY l.position) FROM ej_ticket_lines l WHERE l.ticket_id=t.id),'[]'::json) AS lines,
     COALESCE((SELECT json_agg(json_build_object('date',to_char(p.draw_date,'YYYY-MM-DD'),'amount_cents',p.amount_cents)) FROM ej_payouts p WHERE p.ticket_id=t.id),'[]'::json) AS payouts
-    FROM ej_tickets t ORDER BY t.purchased_on DESC,t.id DESC LIMIT 1000`);
+    FROM ej_tickets t ORDER BY t.purchased_on DESC,t.id DESC`);
   return result.rows;
 }
 export async function deleteTicket(id:string):Promise<void>{

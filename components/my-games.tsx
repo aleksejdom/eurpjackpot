@@ -2,7 +2,7 @@
 import { useEffect,useMemo,useState } from "react";
 import { parseEurojackpotReceipt, mergeReceiptScans } from "@/lib/receipt-parser";
 import { prepareReceiptImage, receiptGameRegion } from "@/lib/receipt-image";
-import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, RefreshCcw, Save, Coins, CalendarDays } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, Save, Coins, CalendarDays, Pencil, X } from "lucide-react";
 type Line={main_numbers:number[];euro_numbers:number[]};
 type Ticket={id:string;purchased_on:string;total_cents:number;note:string;created_at:string;dates:string[];lines:Line[];payouts:{date:string;amount_cents:number}[]};
 type Draw={date:string;main_numbers:number[];euro_numbers:number[]};
@@ -48,6 +48,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
  const [purchase,setPurchase]=useState(""),[amount,setAmount]=useState(""),[note,setNote]=useState("");
  const [lines,setLines]=useState<FormLine[]>([emptyLine()]),[date,setDate]=useState(""),[dates,setDates]=useState<string[]>([]);
  const [showForm,setShowForm]=useState(false),[expanded,setExpanded]=useState<string|null>(null);
+ const [editingId,setEditingId]=useState<string|null>(null);
  const drawMap=useMemo(()=>new Map(draws.map(d=>[d.date,d])),[draws]);
  async function load(){
    try{const r=await fetch("/api/games",{cache:"no-store"});const result=await r.json();if(!r.ok)throw new Error(result.error);setTickets(result.tickets||[]);}
@@ -98,6 +99,26 @@ export default function MyGames({draws}:{draws:Draw[]}){
   }catch(e){console.error("OCR error",e);setError("Texterkennung fehlgeschlagen. Bitte das Foto erneut aufnehmen oder die Werte manuell eingeben.");setShowForm(true);}
   finally{if(worker)await worker.terminate();setScanning(false);setScanProgress("");}
  }
+ function clearForm(){
+  setEditingId(null);setShowForm(false);setPurchase("");setAmount("");setNote("");
+  setDates([]);setDate("");setLines([emptyLine()]);
+  setScanWarnings([]);setError("");setReceiptPreview(null);
+ }
+ function startEdit(ticket:Ticket){
+  setEditingId(ticket.id);
+  setPurchase(ticket.purchased_on);
+  setAmount((ticket.total_cents/100).toFixed(2).replace(".",","));
+  setNote(ticket.note);
+  setDates([...ticket.dates]);setDate("");
+  setLines(ticket.lines.map(line=>({main:line.main_numbers.join(" "),euro:line.euro_numbers.join(" ")})));
+  setScanWarnings([]);setReceiptPreview(null);setError("");setMessage("");
+  setShowForm(true);setExpanded(ticket.id);
+  window.scrollTo({top:0,behavior:"smooth"});
+ }
+ function toggleNew(){
+  if(showForm){clearForm();return;}
+  clearForm();setShowForm(true);
+ }
  function updateLine(i:number,field:keyof FormLine,value:string){setLines(v=>v.map((line,j)=>i===j?{...line,[field]:value}:line));}
  function addDate(){if(!validDate(date)||!drawDay(date)){setError("Bitte einen gültigen Dienstag oder Freitag wählen");return;}if(!purchase){setError("Bitte zuerst Kaufdatum eintragen");return;}if(date<purchase){setError("Die Ziehung darf nicht vor dem Kauf liegen");return;}setDates(prev=>[...new Set([...prev,date])].sort());setDate("");setError("");}
  async function save(){
@@ -114,10 +135,16 @@ export default function MyGames({draws}:{draws:Draw[]}){
   }
   setBusy(true);
   try {
-   const response=await fetch("/api/games",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({purchased_on:purchase,total_cents:Math.round(price*100),note,dates,lines:parsed})});
+   if(editingId){
+     const original=tickets.find(t=>t.id===editingId);
+     const removedPayouts=original?.payouts.filter(p=>!dates.includes(p.date))||[];
+     if(removedPayouts.length && !confirm("Du hast Ziehungsdaten entfernt, für die Auszahlungen hinterlegt sind. Diese Auszahlungen werden beim Speichern gelöscht. Trotzdem fortfahren?")){setBusy(false);return;}
+   }
+   const response=await fetch(editingId?"/api/games/"+editingId:"/api/games",{method:editingId?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({purchased_on:purchase,total_cents:Math.round(price*100),note,dates,lines:parsed})});
    const out=await response.json();if(!response.ok)throw new Error(out.error||"Speichern fehlgeschlagen");
-   await load();setShowForm(false);setPurchase("");setAmount("");setNote("");setDates([]);setDate("");setLines([emptyLine()]);
-   setMessage("Schein gespeichert. Die Zahlen werden mit vorhandenen Ziehungen verglichen.");
+   const wasEditing=Boolean(editingId);
+   await load();clearForm();
+   setMessage(wasEditing?"Spielschein aktualisiert. Treffer, Zahlenhäufigkeit und Gesamtausgaben wurden neu berechnet.":"Schein gespeichert. Die Zahlen werden mit vorhandenen Ziehungen verglichen.");
   }catch(e){setError(e instanceof Error?e.message:"Speichern fehlgeschlagen");}
   finally{setBusy(false);}
  }
@@ -140,14 +167,9 @@ export default function MyGames({draws}:{draws:Draw[]}){
   for(const ticket of tickets)for(const line of ticket.lines){line.main_numbers.forEach(n=>main[n-1].count++);line.euro_numbers.forEach(n=>euro[n-1].count++);}
   return {main:main.sort((a,b)=>b.count-a.count||a.number-b.number),euro:euro.sort((a,b)=>b.count-a.count||a.number-b.number)};
  },[tickets]);
- const byMonth=useMemo(()=>{
-  const result=new Map<string,number>();
-  for(const t of tickets){const month=t.purchased_on.slice(0,7);result.set(month,(result.get(month)||0)+t.total_cents);}
-  return [...result].sort((a,b)=>b[0].localeCompare(a[0]));
- },[tickets]);
  const checked=tickets.reduce((s,t)=>s+t.dates.reduce((a,d)=>a+(drawMap.has(d)?t.lines.length:0),0),0);
  return <section className="games-view">
-  <div className="games-hero"><div><span className="eyebrow">PERSÖNLICHES ARCHIV</span><h1>Meine Spiele</h1><p>Spielscheine erfassen, Treffer kontrollieren und deine Ausgaben nachvollziehen.</p></div><button className="primary-btn" onClick={()=>setShowForm(v=>!v)}><Plus size={18}/>{showForm?"Erfassung schließen":"Spielschein erfassen"}</button></div>
+  <div className="games-hero"><div><span className="eyebrow">PERSÖNLICHES ARCHIV</span><h1>Meine Spiele</h1><p>Spielscheine erfassen, Treffer kontrollieren und deine Ausgaben nachvollziehen.</p></div><button className="primary-btn" onClick={toggleNew}><Plus size={18}/>{showForm?"Erfassung schließen":"Spielschein erfassen"}</button></div>
   <div className="stats games-stats">
    <div className="stat"><div className="stat-top"><span>Gesamtausgaben</span><Coins size={17}/></div><strong>{currency(spent)}</strong><small>{tickets.length} erfasste Scheine</small></div>
    <div className="stat"><div className="stat-top"><span>Erfasste Auszahlungen</span><Check size={17}/></div><strong>{currency(paid)}</strong><small>Auszahlungen manuell eingetragen</small></div>
@@ -155,7 +177,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
   </div>
   {error&&<div className="warning">{error}</div>}{message&&<p className="games-note" role="status">{message}</p>}
   {showForm&&<div className="games-panel">
-   <div className="games-title"><h2>Neuen Schein erfassen</h2><p>Die App erkennt Spielnummern, 5/50, 2/12, Kaufdatum, Eurojackpot-Ziehungsdatum, Laufzeit und Betrag soweit lesbar. Prüfe alle Vorschläge sorgfältig.</p></div>
+   <div className="games-title"><h2>{editingId?"Spielschein bearbeiten":"Neuen Schein erfassen"}</h2><p>Die App erkennt Spielnummern, 5/50, 2/12, Kaufdatum, Eurojackpot-Ziehungsdatum, Laufzeit und Betrag soweit lesbar. Prüfe alle Vorschläge sorgfältig.</p></div>
    <label className="capture"><Camera size={24}/><strong>{scanning?scanProgress:"Eurojackpot-Quittung fotografieren oder auswählen"}</strong><span>Quittung mit gelben LOTTO-Rändern möglichst vollständig und scharf fotografieren. Das Foto wird nicht auf dem Server gespeichert.</span><input aria-label="Spielschein fotografieren" type="file" accept="image/*" capture="environment" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file);e.target.value="";}}/></label>
    {scanWarnings.length>0&&<div className="scan-review" role="status"><strong>Beim Prüfen beachten:</strong><ul>{scanWarnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
    {receiptPreview&&<details className="scan-preview" open><summary>Originalquittung zum Zahlenvergleich anzeigen</summary><img src={receiptPreview} alt="Originalaufnahme zur Kontrolle der automatisch erkannten Daten"/></details>}
@@ -168,11 +190,11 @@ export default function MyGames({draws}:{draws:Draw[]}){
    <div className="date-tags">{dates.map(d=><span className="date-tag" key={d}><CalendarDays size={13}/>{readableDate(d)}<button aria-label={"Datum "+d+" entfernen"} onClick={()=>setDates(v=>v.filter(x=>x!==d))}>×</button></span>)}</div>
    <label className="field field-note">Notiz (optional)<input maxLength={500} placeholder="z. B. Annahmestelle oder Scheinbezeichnung" value={note} onChange={e=>setNote(e.target.value)}/></label>
    <p className="games-small">Der Gesamtpreis wird einmal pro Schein gezählt, auch wenn mehrere Termine ausgewählt sind. Die App kann den Annahmeschluss nicht prüfen.</p>
-   <button className="primary-btn" disabled={busy||scanning} onClick={()=>void save()}><Save size={17}/>{busy?"Speichere …":"Geprüften Spielschein speichern"}</button>
+   <div className="edit-actions"><button className="primary-btn" disabled={busy||scanning} onClick={()=>void save()}><Save size={17}/>{busy?"Speichere …":editingId?"Änderungen speichern":"Geprüften Spielschein speichern"}</button>{editingId&&<button className="outlined-btn" disabled={busy} onClick={clearForm}><X size={16}/> Abbrechen</button>}</div>
   </div>}
   <div className="games-panel"><div className="games-title"><h2>Gespeicherte Spielscheine</h2><p>{checked} geprüfte Tippfeld-Ziehungen · Ohne vorhandene Ziehung kein Trefferstatus</p></div>
    {!tickets.length?<div className="empty">Noch keine Spielscheine gespeichert.</div>:tickets.map(t=><div className="ticket-card" key={t.id}>
-     <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
+     <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" type="button" title="Schein bearbeiten" aria-label={"Spielschein vom "+readableDate(t.purchased_on)+" bearbeiten"} onClick={()=>startEdit(t)}><Pencil size={16}/></button><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
      {expanded===t.id&&<div className="ticket-detail">{t.dates.map(d=><div className="ticket-draw" key={d}><div className="ticket-draw-header"><strong>Ziehung {readableDate(d)}</strong><span>{drawMap.has(d)?"Ergebnis verfügbar":"Noch kein Ergebnis im Archiv"}</span></div>
        {t.lines.map((line,i)=>{const draw=drawMap.get(d);const mains=draw?line.main_numbers.filter(n=>draw.main_numbers.includes(n)).length:0;const euros=draw?line.euro_numbers.filter(n=>draw.euro_numbers.includes(n)).length:0;return <div className="ticket-line-result" key={i}><small>Feld {i+1}</small><MatchBalls line={line} draw={draw}/><span className="match-count">{draw?mains+" + "+euros:"Offen"}</span></div>;})}
        {drawMap.has(d)&&<div className="winning-reference">Gezogen: {drawMap.get(d)!.main_numbers.join(" · ")} + {drawMap.get(d)!.euro_numbers.join(" · ")}</div>}
@@ -183,8 +205,7 @@ export default function MyGames({draws}:{draws:Draw[]}){
   <div className="games-summary-grid">
    <div className="games-panel"><div className="games-title"><h2>Meine häufigsten Zahlen</h2><p>Häufigkeit je angekreuztem Tippfeld, nicht je Ziehung</p></div>
    <h3>Hauptzahlen</h3><Frequency data={freq.main.slice(0,10)}/><h3>Eurozahlen</h3><Frequency data={freq.euro.slice(0,6)}/></div>
-   <div className="games-panel"><div className="games-title"><h2>Ausgaben nach Monat</h2><p>Zuordnung nach Kaufdatum, inkl. eingetragener Gebühren</p></div>
-   {byMonth.length?byMonth.map(([month,cents])=><div className="monthly-row" key={month}><span>{month.slice(5)} / {month.slice(0,4)}</span><strong>{currency(cents)}</strong></div>):<div className="empty">Noch keine Ausgaben</div>}</div>
+   <div className="games-panel"><div className="games-title"><h2>Gesamtausgaben</h2><p>Alle erfassten Eurojackpot-Scheine zusammen – unabhängig vom Kaufmonat.</p></div><div className="expense-total"><span>Ausgaben insgesamt</span><strong>{currency(spent)}</strong><small>Summe aus {tickets.length} Spielscheinen inklusive eingetragener Gebühren. Jeder Schein wird nur einmal gezählt.</small></div><div className="expense-detail"><span>Erfasste Auszahlungen</span><strong>{currency(paid)}</strong></div><div className="expense-detail"><span>Gesamtbilanz</span><strong>{currency(paid-spent)}</strong></div></div>
   </div>
   <p className="games-small">Trefferanzeigen zeigen ausschließlich passende Zahlen, keine bestätigte Gewinnklasse oder Auszahlung. Gewinnquoten und tatsächliche Auszahlungen sind gesondert zu prüfen. Alle Angaben ohne Gewähr.</p>
  </section>;

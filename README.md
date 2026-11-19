@@ -47,3 +47,11 @@ Der Reiter „Meine Spiele“ speichert nach Bestätigung Tippfelder, Kaufdatum,
 Node.js 22+ und PostgreSQL erforderlich. `npm install` ausführen, `.env.example` als `.env.local` kopieren und eigene Laufzeitvariablen eintragen, dann `npm run dev`.
 
 **Hinweise:** HTTPS verwenden, PostgreSQL-Backups einrichten, Zugangsdaten nicht in GitHub speichern. Es gibt derzeit weder Multiuser-Datentrennung noch automatisierte offizielle Gewinnquoten. Alle Angaben ohne Gewähr; keine offizielle Eurojackpot-Anwendung.
+
+## Gespeicherte Spielscheine bearbeiten
+
+In **Meine Spiele → Gespeicherte Spielscheine** über das Stiftsymbol einen vorhandenen Schein auswählen. Das Formular wird mit den aktuell gespeicherten Hauptzahlen, Eurozahlen, Kaufdatum, Ziehungsterminen, Gesamtpreis und Notiz gefüllt. Zahlen, Felder, Tage und Preise können geändert, ergänzt oder entfernt werden; danach **Änderungen speichern**.
+
+Die Bearbeitung nutzt **PUT /api/games/:id** mit Better-Auth-Sitzungsprüfung und derselben serverseitigen Prüfung wie beim Anlegen. PostgreSQL aktualisiert alle Daten **in einer Transaktion**, ohne den Spielschein zu duplizieren. Auszahlungen zu beibehaltenen Ziehungsterminen bleiben erhalten; beim Entfernen eines Ziehungsdatums werden zugehörige Auszahlungen nach Rückfrage ebenfalls entfernt. Eine Korrektur von Tippzahlen oder Datum aktualisiert automatisch die Trefferanzeige und die Zahlenstatistik.
+
+**Ausgaben:** Die monatliche Übersicht wurde entfernt. Die Seite zeigt die **Summe aller erfassten Scheine**, unabhängig vom Kaufmonat, sowie die erfassten Auszahlungen und die Gesamtbilanz. Jeder Schein zählt einmal, auch bei mehreren Ziehungsterminen.
