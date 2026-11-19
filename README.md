@@ -1,44 +1,56 @@
-# Eurojackpot – Next.js mit PostgreSQL
+# Eurojackpot – Next.js, PostgreSQL und Meine Spiele
 
-Responsive Next.js-Dashboard zur Darstellung historischer Ziehungszahlen. Kalender, Jahresfilter, Suche, Häufigkeitsstatistik und persistente PostgreSQL-Speicherung.
+Persönliches Eurojackpot-Archiv mit Ziehungszahlen, Kalenderfilter, gescannten oder manuell erfassten Spielscheinen, Zahlenstatistik sowie Aufzeichnung von Ausgaben und optionalen Auszahlungen.
 
-## Coolify / Hetzner
+## Deployment mit Coolify
 
-1. Repository in Coolify als **Application** auswählen, Build Pack **Dockerfile**, Port **3000**.
-2. In der Application unter **Environment Variables** die geheime Laufzeitvariable **`DATABASE_URL`** mit der vollständigen PostgreSQL-URL setzen. **Nicht** in GitHub oder einen öffentlichen Build-Log schreiben. Bei einem Coolify-Postgres-Dienst muss der interne Hostname aus der PostgreSQL-Ressource verwendet werden; `localhost` ist nicht korrekt, wenn App und DB in unterschiedlichen Containern laufen.
-3. Optional **`SYNC_INTERVAL_HOURS=6`** konfigurieren. Diese Variable bestimmt, nach wie vielen Stunden bei einem erneuten API-Seitenabruf aktualisiert wird.
-4. App und Postgres-Ressource müssen über ein gemeinsames Docker-Netz erreichbar sein. Postgres muss Zugriffe der Application erlauben.
-5. **Deploy** auslösen und die Logs überprüfen. Der erste Aufruf von `/api/draws` legt die Tabellen an und importiert die Historie automatisch.
+1. **main** als Git-Branch, **Dockerfile** als Build-Pack und Port **3000** verwenden.
+2. Environment Variables (nur **Runtime**, geheim, niemals ins Repository):
+   - `DATABASE_URL`: PostgreSQL-Verbindungsadresse aus deiner bestehenden Coolify-Postgres-Ressource.
+   - `BASIC_AUTH_USER`: eigener Benutzername.
+   - `BASIC_AUTH_PASSWORD`: starkes, einzigartiges Passwort.
+   - `SYNC_INTERVAL_HOURS=6`: optionaler Abrufabstand für Ziehungszahlen.
+3. Das interne Coolify-Netzwerk muss die App mit PostgreSQL verbinden. PostgreSQL ist keine SQLite-Datei. Alte SQLite-Variablen und Mounts werden nicht benötigt.
+4. HTTPS für die Website aktivieren (auch erforderlich für mobile Kamerafunktionen).
+5. Deployment starten, anschließend im Browser per HTTP Basic Auth anmelden.
 
-Die Datenbankresource benötigt **kein SQLite-Volume**. Die App nutzt den PostgreSQL-Dienst direkt über das Docker-Netz.
+**Fail closed:** Sind BASIC_AUTH_USER oder BASIC_AUTH_PASSWORD nicht gesetzt, reagiert die App mit HTTP 503, ohne Zugang zum Dashboard oder zu APIs.
 
-## Lokal
+## Meine Spiele
 
-Node.js >= 22 und eine erreichbare PostgreSQL-Datenbank erforderlich.
+- Im Reiter **Meine Spiele** den Button „Spielschein erfassen“ auswählen.
+- Auf dem Smartphone über das Kamerafeld ein Foto aufnehmen; alternativ ein bestehendes Bild auswählen.
+- **OCR läuft im Browser** (Tesseract.js mit Sprachdaten/Worker, die gegebenenfalls über das Internet geladen werden). Fotos werden **nicht** an die App-API gesendet. OCR ist fallibel: alle erkannten Haupt- und Eurozahlen sowie Termine unbedingt mit dem Schein vergleichen.
+- Falls die Erkennung unvollständig ist, Zahlen selbst eintragen: 5 unterschiedliche Hauptzahlen 1–50, 2 unterschiedliche Eurozahlen 1–12.
+- **Kaufdatum**, **alle Ziehungstermine** (Dienstag/Freitag), **Gesamtpreis inklusive Gebühren** und optional eine Notiz eingeben.
+- Nach Bestätigung und Speichern werden die Tipps bei vorhandenen Ziehungen mit den gespeicherten Gewinnzahlen verglichen.
+- Die App kennzeichnet Trefferzahlen, zeigt die Anzahl Haupttreffer + Eurotreffer, speichert pro Ticket die **einmaligen** Kosten sowie optional manuell eingetragene tatsächlich erhaltene Auszahlungen.
+- Zusätzliche Übersicht: häufig verwendete Zahlen, Ausgaben nach Kaufmonat, Gesamtausgaben und Differenz zwischen erfassten Auszahlungen und Ausgaben.
 
-```bash
-npm install
-cp .env.example .env.local
-# DATABASE_URL in .env.local durch sichere persönliche Laufzeitverbindung ersetzen
-npm run dev
-```
+### Einschränkungen
+
+- **OCR ist eine Erfassungshilfe, keine sichere automatische Scheinprüfung**. Übertragung von Datum, Anzahl Ziehungen, Auswahl und Gesamtpreis erfolgt nach manueller Bestätigung, nicht automatisch aus dem Foto.
+- Historie der aktuellen Quelle ab **25.03.2022**. Fehlen Ergebnisse, erscheint kein abgeschlossener Trefferstatus.
+- Aus Zahlentreffern werden **keine Euro-Gewinne geschätzt**. Für reale Gewinne sind offizielle Gewinnklassen/Quoten und tatsächliche Auszahlungen zu prüfen.
+- Die App erfasst aktuell keinen Zusatzlotterie-Spieltyp; eingetragene Gesamtkosten können diese enthalten, die Trefferwertung nicht.
+- Für Datensicherung PostgreSQL-Backups in Coolify konfigurieren.
+- HTTP Basic Auth ist eine einfache Zugangssperre für eine persönliche App. Verwende ausschließlich **HTTPS** und sichere Zugangsdaten. Es gibt keine Multiuser-Isolation oder Login-Verwaltung.
+- Bei Bedarf später zusätzlich Rate Limiting und einen Auth-Proxy in Coolify aktivieren.
+- Die App verwendet externe Google Fonts; für einen produktiven DSGVO-sensiblen Betrieb lokal hosten.
+- Alle Angaben ohne Gewähr. Keine offizielle Eurojackpot-Anwendung.
 
 ## Datenbank
 
-Zwei eigenständige Tabellen werden mit `CREATE TABLE IF NOT EXISTS` erzeugt: `eurojackpot_draws`, `eurojackpot_meta`. Es gibt keine DROP-Anweisung und keine Datenbankmigration alter Tabellen. Zeichnungen werden per Upsert gespeichert. Bestehende andere Tabellen werden nicht angetastet.
+Es werden zusätzlich zu `eurojackpot_draws` und `eurojackpot_meta` die Tabellen `ej_tickets`, `ej_ticket_lines`, `ej_ticket_dates`, `ej_payouts` automatisch bei der ersten Anfrage angelegt. Bestehende Tabellen werden nicht gelöscht. Ein Schein kann mehrere Tippfelder und Ziehungstermine haben; der Betrag zählt für den gesamten Schein **einmal**.
 
-**Eine vorherige SQLite-Datenbank wird nicht automatisch migriert.** Daten werden stattdessen aus der öffentlichen Datenquelle neu importiert.
+## Lokal
 
-## Datenquelle / Grenzen
+Node.js 22+, PostgreSQL. `npm install`, `cp .env.example .env.local`, Werte befüllen, `npm run dev`.
 
-Standard: https://github.com/protomultix/eurojackpot-api
+## API (Basic Auth erforderlich)
 
-Historische Ziehungen ab 25.03.2022 auf Basis des LOTTO-Bayern-Archivs. Automatischer Abruf beim ersten Öffnen und nach `SYNC_INTERVAL_HOURS` bei einem erneuten Seitenabruf; kein echter Cronjob. Manuelles Refresh per Oberfläche oder `GET /api/draws?refresh=1`. `GET /api/draws` liefert `draws`, `lastSync`, `syncError` und `source`.
-
-Alle Angaben ohne Gewähr. Keine offizielle Lotto-Anwendung und keine Vorhersage zukünftiger Zahlen.
-
-## Hinweise
-
-- Bei offenem Zugriff kann der Refresh-Endpunkt von jedem Besucher ausgelöst werden; gegebenenfalls nach Deployment authentifizieren oder drosseln.
-- Die Oberfläche bindet derzeit Google Fonts extern ein. Für einen DSGVO-konformen öffentlichen Betrieb Fonts selbst hosten.
-- PostgreSQL-Zugangsdaten nie committen. Nach versehentlicher Veröffentlichung das Datenbankpasswort rotieren.
+- `GET /api/draws` – Ziehungen; `?refresh=1` aktualisiert bei Bedarf
+- `GET /api/games` – gespeicherte Scheine
+- `POST /api/games` – geprüften Schein speichern
+- `DELETE /api/games/:id` – Schein entfernen
+- `PUT /api/games/:id/payout` – Auszahlung für eine zugeordnete Ziehung speichern

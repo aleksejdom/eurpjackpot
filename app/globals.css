@@ -1,3 +1,80 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 :root{color-scheme:dark;--bg:#090d17;--panel:#111724;--border:#252d3e;--muted:#929caf;--text:#f4f6fb;--accent:#f5c34b}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}body{font-family:"DM Sans",system-ui,sans-serif;background:radial-gradient(ellipse 58% 20% at 50% 1%,#192947 0%,transparent 100%),var(--bg)}button,input,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.38;cursor:not-allowed}.shell{max-width:1200px;margin:auto;padding:0 32px}.topbar{height:92px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}.brand{display:flex;align-items:center;gap:12px;font:700 21px "Space Grotesk",sans-serif;letter-spacing:-.6px}.brand-logo{display:grid;place-items:center;background:var(--accent);color:#111827;width:39px;height:39px;border-radius:12px}.brand-accent{color:var(--accent)}.brand small{display:block;font:700 9px "DM Sans",sans-serif;color:#8994a8;letter-spacing:2.3px;margin-top:2px}.top-right{display:flex;gap:20px;align-items:center}.live{font-size:12px;color:#c3cbd6;display:flex;align-items:center;gap:8px}.live-dot{background:#49dba3;display:inline-block;width:7px;height:7px;border-radius:50%;box-shadow:0 0 12px #49dba377}.ghost{border:1px solid #343b4e;background:#151b2a;color:#f5f5f7;border-radius:10px}.icon-btn{display:flex;align-items:center;gap:9px;padding:11px 14px;font-size:13px}.intro{padding:80px 0 45px}.eyebrow{font-size:11px;letter-spacing:2.5px;color:var(--accent);font-weight:800}.intro h1{font:700 clamp(45px,6vw,76px)/1.05 "Space Grotesk";letter-spacing:-3.8px;margin:20px 0 20px}.intro h1 span{color:var(--accent)}.intro p,.history-heading p,.frequencies p{color:var(--muted);line-height:1.7;font-size:15px;margin:0;max-width:570px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.stat,.featured,.history,.frequencies{border:1px solid var(--border);background:linear-gradient(150deg,#151c2b,#101520);border-radius:16px}.stat{padding:25px 26px}.stat-top{display:flex;align-items:center;justify-content:space-between;color:#a8b1c1;font-size:13px;margin-bottom:20px}.stat-top svg{color:#7f8ba1}.stat strong{display:block;font:700 32px "Space Grotesk";letter-spacing:-1px;margin-bottom:8px}.stat small{color:#818da2;font-size:12px}.featured{margin-top:20px;padding:26px 30px;border-color:#56502d;background:linear-gradient(110deg,#211f1d 0%,#15191d 70%,#131923 100%)}.sectionline{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#a1aabd;border-bottom:1px solid #37382f;padding-bottom:20px}.featured-badge{display:flex;align-items:center;gap:10px;color:var(--accent);font-size:11px;font-weight:800;letter-spacing:1.6px}.feature-body{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-top:30px;padding-bottom:5px}.feature-body h2{font:700 25px "Space Grotesk";margin:0 0 7px}.feature-body p{color:#9da6b5;font-size:13px;margin:0}.balls,.ball-group{display:flex;align-items:center;gap:9px}.ball{width:49px;height:49px;display:grid;place-items:center;border-radius:50%;background:#f4f5fa;color:#1b2533;font:700 18px "Space Grotesk";box-shadow:0 3px 8px #0002}.ball.euro{background:var(--accent);color:#231c08}.plus{color:#737e92;margin:0 5px;font-size:24px}.history{margin:22px 0;padding:30px}.history-heading{display:flex;justify-content:space-between;gap:20px;align-items:center}.history-heading h2,.frequencies h2{font:700 28px "Space Grotesk";margin:10px 0}.count{display:flex;align-items:center;gap:9px;color:#c9d0dd;background:#1d2636;padding:10px 14px;border:1px solid #30394b;border-radius:9px;white-space:nowrap;font-size:12px}.filters{display:flex;gap:12px;align-items:end;margin:28px 0 16px;flex-wrap:wrap}.filter{display:flex;flex-direction:column;gap:8px;flex:1;min-width:170px}.filter span{display:flex;align-items:center;gap:7px;color:#aeb7c6;font-size:12px}.filter input,.filter select{color:#e9edf4;background:#0b111d;border:1px solid #30394b;border-radius:9px;height:43px;padding:0 12px;width:100%;outline:none}.filter input:focus,.filter select:focus{border-color:var(--accent)}.filter input[type=date]{color-scheme:dark}.filter.search{flex:1.5}.reset{background:transparent;color:#b3bdce;border:0;text-decoration:underline;height:43px;font-size:12px;padding:0 3px}.draw-list{border:1px solid var(--border);border-radius:12px;overflow:hidden}.draw-row{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:18px 21px;background:#131b2a;border-bottom:1px solid var(--border)}.draw-row:nth-child(even){background:#101724}.draw-row:last-child{border-bottom:0}.draw-date{display:flex;gap:13px;align-items:center;min-width:195px}.date-icon{width:43px;height:43px;border-radius:10px;background:#212d40;color:#c4cfe1;display:grid;place-items:center}.draw-date strong{display:block;font-size:14px}.draw-date span:not(.date-icon){font-size:12px;color:#8a95a8;display:block;margin-top:4px}.draw-row .ball{width:34px;height:34px;font-size:13px}.draw-row .balls{gap:7px}.draw-row .ball-group{gap:7px}.draw-row .plus{font-size:17px;margin:0 4px}.row-tag{color:#8a96aa;font-size:11px;background:#202a3b;border-radius:7px;padding:7px 9px}.empty{text-align:center;padding:40px;color:#9ca7ba;font-size:14px}.empty button{border:none;background:none;color:var(--accent);text-decoration:underline}.pagination{display:flex;justify-content:space-between;align-items:center;padding-top:18px;color:#8e9aae;font-size:12px}.pagination div{display:flex;gap:8px}.pagination button{width:36px;height:36px;border:1px solid #344057;border-radius:8px;background:#1d2738;color:#fff;display:grid;place-items:center}.frequencies{display:grid;grid-template-columns:1fr 1fr;gap:50px;margin:22px 0 42px;padding:35px}.freq-list{display:grid;gap:13px}.freq-item{display:flex;gap:14px;align-items:center;font-size:12px}.freq-number{width:30px;height:30px;border-radius:50%;background:#e7eaf0;color:#1a2330;display:grid;place-items:center;font-weight:700}.freq-track{height:7px;background:#283244;border-radius:6px;flex:1;overflow:hidden}.freq-track div{background:var(--accent);height:100%;border-radius:6px}.freq-value{min-width:35px;text-align:right;color:#c8d0dd}footer{display:flex;justify-content:space-between;gap:25px;align-items:center;padding:28px 0 38px;border-top:1px solid var(--border);color:#7b8596;font-size:11px;line-height:1.6}footer span:first-child{font-weight:800;letter-spacing:1.5px;white-space:nowrap}.warning{border:1px solid #826a35;background:#2f2817;color:#f3d89b;padding:14px 18px;border-radius:12px;margin-top:18px;font-size:13px;line-height:1.6}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:900px){.feature-body{align-items:flex-start;flex-direction:column}.draw-row{flex-wrap:wrap}.row-tag{display:none}.draw-date{min-width:160px}}@media(max-width:640px){.shell{padding:0 16px}.topbar{height:74px}.brand{font-size:16px}.brand-logo{width:35px;height:35px}.icon-btn span,.live{display:none}.intro{padding:58px 0 28px}.intro h1{letter-spacing:-2px}.stats{grid-template-columns:1fr;gap:10px}.stat{padding:20px}.stat strong{font-size:27px}.stat-top{margin-bottom:10px}.featured,.history,.frequencies{padding:20px}.sectionline{gap:10px;flex-wrap:wrap}.featured .ball{width:40px;height:40px;font-size:15px}.balls,.ball-group{gap:5px}.history-heading{align-items:flex-start;flex-direction:column}.filters{flex-direction:column;align-items:stretch}.filter{width:100%}.reset{text-align:left}.draw-row{flex-direction:column;align-items:flex-start;padding:19px}.draw-row .ball{width:37px;height:37px}.frequencies{grid-template-columns:1fr;gap:24px}footer{flex-direction:column;align-items:flex-start}.count{font-size:11px}}
+
+
+.dashboard-tabs{display:flex;gap:10px;margin-top:30px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.dashboard-tabs button{display:flex;align-items:center;gap:10px;border:1px solid transparent;background:transparent;color:#9aa6b8;padding:13px 18px;border-radius:10px;font-weight:700}
+.dashboard-tabs button.active{background:#1b2537;border-color:#3c475c;color:#f5c34b}
+.games-view{padding:52px 0 35px}
+.games-hero{display:flex;align-items:center;justify-content:space-between;gap:30px;margin-bottom:28px}
+.games-hero h1{font:700 clamp(40px,5vw,65px)/1.1 "Space Grotesk";letter-spacing:-2.4px;margin:14px 0}
+.games-hero p,.games-title p{color:#929caf;line-height:1.65;font-size:14px;margin:0}
+.primary-btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:none;border-radius:10px;background:#f5c34b;color:#151a22;padding:14px 20px;font-weight:800;white-space:nowrap}
+.primary-btn:disabled{opacity:.6}
+.games-stats{margin-bottom:22px}
+.games-panel{background:linear-gradient(150deg,#151c2b,#101520);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;padding:27px}
+.games-title{margin-bottom:22px}.games-title h2{font:700 25px "Space Grotesk";margin:0 0 7px}
+.games-title h3{margin:0}
+.games-note{border:1px solid #285545;background:#143527;color:#afefd1;padding:13px 18px;border-radius:10px;font-size:13px}
+.capture{border:1px dashed #5c6b82;border-radius:13px;background:#171f2f;display:flex;flex-direction:column;align-items:center;text-align:center;justify-content:center;gap:9px;padding:30px 14px;position:relative;cursor:pointer;margin:15px 0 25px}
+.capture svg{color:var(--accent)}.capture strong{font-size:15px}.capture span{font-size:12px;color:#a5afbf}.capture input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.games-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:8px;color:#bec7d3;font-size:13px}
+.field input,.date-editor input,.payout-row input{width:100%;min-width:0;border:1px solid #364258;border-radius:9px;color:#f3f4f7;background:#0c1422;height:44px;padding:10px 12px;outline:none}
+.field input:focus,.date-editor input:focus,.payout-row input:focus{border-color:var(--accent)}
+.games-subtitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:30px 0 14px}
+.games-subtitle h3{font:700 18px "Space Grotesk";margin:0}.games-subtitle span{font-size:12px;color:#8e99aa}
+.line-editor{display:flex;align-items:flex-end;gap:12px;margin-bottom:12px}
+.line-editor .field{flex:1}.line-editor .field.euro-input{flex:.5}
+.line-index{display:grid;place-items:center;color:#f5c34b;background:#2d2c27;width:40px;height:44px;border-radius:8px;flex-shrink:0;font-weight:800}
+.small-btn{display:grid;place-items:center;flex-shrink:0;width:40px;height:44px;background:#192435;border:1px solid #344057;color:#aab5c8;border-radius:9px}
+.outlined-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#1c2738;border:1px solid #40506a;border-radius:9px;padding:12px 15px;color:#dce3ee;font-size:13px}
+.date-editor{display:flex;align-items:center;gap:12px}.date-editor input{max-width:245px;color-scheme:dark}
+.date-tags{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.date-tag{display:inline-flex;align-items:center;gap:9px;border:1px solid #4d4b33;color:#efd385;border-radius:9px;padding:7px 12px;background:#29281f;font-size:12px}
+.date-tag button{background:transparent;border:0;color:#e6d58f;font-size:20px;line-height:1}
+.field-note{margin:25px 0 15px}.games-small{color:#96a2b3;font-size:12px;line-height:1.75}
+.ticket-card{border:1px solid #303b50;border-radius:11px;background:#121b2a;margin-top:11px;overflow:hidden}
+.ticket-heading{padding:16px;display:flex;justify-content:space-between;align-items:center;gap:14px}
+.ticket-expand{display:flex;gap:12px;align-items:center;text-align:left;border:0;background:transparent;color:#e6eaf2;min-width:0}
+.ticket-expand span{display:flex;flex-direction:column;gap:5px}.ticket-expand small{color:#93a0b0;font-size:11px}
+.ticket-heading-end{display:flex;gap:13px;align-items:center;white-space:nowrap}
+.ticket-detail{padding:4px 17px 17px;border-top:1px solid #354058}
+.ticket-draw{margin-top:17px;background:#0e1624;padding:16px;border-radius:10px}
+.ticket-draw-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:15px;font-size:13px}
+.ticket-draw-header span{color:#96a5b9;font-size:11px}
+.ticket-line-result{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.ticket-line-result small{color:#8794a7;min-width:45px}
+.ticket-balls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:5px}
+.ticket-ball{width:31px;height:31px;border-radius:50%;display:grid;place-items:center;background:#edf0f5;color:#1b2533;font-weight:800;font-size:12px}
+.ticket-ball.euro{background:#f5c34b;color:#272114}
+.ticket-ball.matched{background:#37d59c;color:#0a2a20;box-shadow:0 0 0 2px #57e9b1}
+.ticket-ball.matched-euro{background:#f59d47;color:#1c1307;box-shadow:0 0 0 2px #ffca8e}
+.ticket-divider{font-size:15px;color:#8b95a5;padding:0 2px}
+.match-count{font-size:13px;font-weight:800;min-width:44px;color:#f5c34b;text-align:right}
+.winning-reference{font-size:12px;color:#a3b1c2;border-top:1px solid #273347;padding-top:11px;margin-top:12px}
+.payout-row{display:flex;align-items:flex-end;gap:10px;margin-top:14px}
+.payout-row label{display:flex;flex-direction:column;gap:6px;font-size:11px;color:#a5b1c0}
+.payout-row input{max-width:120px;height:40px}
+.payout-row button{height:40px}
+.games-summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.games-summary-grid h3{font-size:14px;font-weight:800;margin:25px 0 15px}
+.monthly-row{display:flex;justify-content:space-between;border-bottom:1px solid #293448;padding:14px 0;color:#b6c0ce;font-size:13px}
+.monthly-row strong{color:#f1f3f7}
+@media(max-width:750px){
+ .games-hero{align-items:flex-start;flex-direction:column}.games-panel{padding:18px}
+ .games-form-grid,.games-summary-grid{grid-template-columns:1fr}
+ .line-editor{flex-wrap:wrap}.line-editor .field{min-width:130px}
+ .ticket-heading{align-items:flex-start}.ticket-heading-end{align-self:center}
+ .ticket-line-result{flex-wrap:wrap;justify-content:flex-start}.ticket-balls{order:3;width:100%;justify-content:flex-start}
+ .ticket-draw-header{align-items:flex-start;flex-direction:column}
+}
+@media(max-width:460px){
+ .dashboard-tabs button{font-size:13px;padding:11px}
+ .date-editor{flex-wrap:wrap}.date-editor input{max-width:none}
+ .games-subtitle{align-items:flex-start;flex-direction:column}
+ .ticket-heading{gap:6px}.ticket-expand{gap:6px}
+ .ticket-heading-end{gap:5px}.ticket-heading-end .small-btn{width:32px}
+ .payout-row{flex-wrap:wrap}
+}
