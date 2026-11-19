@@ -187,18 +187,25 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
   return {main:main.sort((a,b)=>b.count-a.count||a.number-b.number),euro:euro.sort((a,b)=>b.count-a.count||a.number-b.number)};
  },[tickets]);
  const checked=tickets.reduce((s,t)=>s+t.dates.reduce((a,d)=>a+(drawMap.has(d)?t.lines.length:0),0),0);
- const ticketHitTotals=(ticket:Ticket)=>{
-  let main=0,euro=0,compared=0;
+ const bestTicketHit=(ticket:Ticket)=>{
+  let best:{main:number;euro:number;date:string;field:number}|null=null;
+  let compared=0;
   for(const date of ticket.dates){
    const draw=drawMap.get(date);if(!draw)continue;
-   const winMain=new Set(draw.main_numbers.map(Number)),winEuro=new Set(draw.euro_numbers.map(Number));
-   for(const line of ticket.lines){
-    main+=line.main_numbers.filter(n=>winMain.has(Number(n))).length;
-    euro+=line.euro_numbers.filter(n=>winEuro.has(Number(n))).length;
+   const winMain=new Set(draw.main_numbers.map(Number));
+   const winEuro=new Set(draw.euro_numbers.map(Number));
+   for(const [index,line] of ticket.lines.entries()){
+    const main=line.main_numbers.filter(n=>winMain.has(Number(n))).length;
+    const euro=line.euro_numbers.filter(n=>winEuro.has(Number(n))).length;
     compared++;
+    // Strongest combination: prefer the highest number of main hits,
+    // then Euro hits, as in the Eurojackpot jackpot requirement (5+2).
+    if(!best||main>best.main||(main===best.main&&euro>best.euro)){
+     best={main,euro,date,field:index+1};
+    }
    }
   }
-  return {main,euro,compared,total:main+euro};
+  return {best,compared};
  };
  const formPanel=<div className="games-panel">
    <div className="games-title"><h2>{editingId?"Spielschein bearbeiten":"Neuen Schein erfassen"}</h2><p>Die App erkennt Spielnummern, 5/50, 2/12, Kaufdatum, Eurojackpot-Ziehungsdatum, Laufzeit und Betrag soweit lesbar. Prüfe alle Vorschläge sorgfältig.</p></div>
@@ -237,7 +244,7 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
   {error&&<div className="warning">{error}</div>}{message&&<p className="games-note" role="status">{message}</p>}
   <div className="games-panel"><div className="games-title"><h2>Gespeicherte Spielscheine</h2><p>{checked} geprüfte Tippfeld-Ziehungen · Ohne vorhandene Ziehung kein Trefferstatus</p></div>
    {!tickets.length?<div className="empty">Noch keine Spielscheine gespeichert.</div>:tickets.map(t=><div className="ticket-card" key={t.id}>
-     <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small><span className="ticket-compact-hits">{(()=>{const hits=ticketHitTotals(t);return hits.compared?hits.total+" richtige Einzelzahlen ("+hits.main+" Haupt- / "+hits.euro+" Eurozahlen)":"Treffer noch offen";})()}</span></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" type="button" title="Schein bearbeiten" aria-label={"Spielschein vom "+readableDate(t.purchased_on)+" bearbeiten"} onClick={()=>window.location.assign("/games/edit/"+t.id)}><Pencil size={16}/></button><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
+     <div className="ticket-heading"><button className="ticket-expand" onClick={()=>setExpanded(v=>v===t.id?null:t.id)}>{expanded===t.id?<ChevronUp size={18}/>:<ChevronDown size={18}/>}<span><strong>Schein vom {readableDate(t.purchased_on)}</strong><small>{t.lines.length} Tippfelder · {t.dates.length} Ziehungen{t.note?" · "+t.note:""}</small><span className="ticket-compact-hits">{(()=>{const result=bestTicketHit(t);if(!result.best)return "Treffer noch offen";const hit=result.best;return "Beste Kombination: "+hit.main+" Hauptzahl"+(hit.main===1?"":"en")+" + "+hit.euro+" Eurozahl"+(hit.euro===1?"":"en")+" · Feld "+hit.field+" · "+readableDate(hit.date);})()}</span></span></button><div className="ticket-heading-end"><strong>{currency(t.total_cents)}</strong><button className="small-btn" type="button" title="Schein bearbeiten" aria-label={"Spielschein vom "+readableDate(t.purchased_on)+" bearbeiten"} onClick={()=>window.location.assign("/games/edit/"+t.id)}><Pencil size={16}/></button><button className="small-btn" title="Schein löschen" onClick={()=>void remove(t.id)}><Trash2 size={16}/></button></div></div>
      {expanded===t.id&&<div className="ticket-detail">{t.dates.map(d=><div className="ticket-draw" key={d}><div className="ticket-draw-header"><strong>Ziehung {readableDate(d)}</strong><span>{drawMap.has(d)?"Ergebnis verfügbar":"Noch kein Ergebnis im Archiv"}</span></div>
        {t.lines.map((line,i)=>{
         const draw=drawMap.get(d);
