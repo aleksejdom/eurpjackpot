@@ -1,74 +1,84 @@
-/** Browser-only preparation optimized for long yellow-bordered lottery receipts. */
+/** Camera image variants: preserve the original and produce a receipt-focused
+ * grayscale copy. Never upload files; all canvas operations run in-browser. */
 export async function prepareReceiptImage(file:File):Promise<Blob>{
  if(typeof document==="undefined")return file;
  let bitmap:ImageBitmap;
  try{bitmap=await createImageBitmap(file);}catch{return file;}
  try{
-  const base=document.createElement("canvas");
-  const shrink=Math.min(1,1800/Math.max(bitmap.width,bitmap.height));
-  base.width=Math.max(1,Math.round(bitmap.width*shrink));
-  base.height=Math.max(1,Math.round(bitmap.height*shrink));
-  const ctx=base.getContext("2d",{willReadFrequently:true});
+  // Preserve detail: thermal receipt figures can be just a few pixels wide.
+  const scale=Math.min(1,2600/Math.max(bitmap.width,bitmap.height));
+  const width=Math.max(1,Math.round(bitmap.width*scale));
+  const height=Math.max(1,Math.round(bitmap.height*scale));
+  const canvas=document.createElement("canvas");
+  canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
   if(!ctx)return file;
-  ctx.drawImage(bitmap,0,0,base.width,base.height);
-  const width=base.width,height=base.height;
-  const pixels=ctx.getImageData(0,0,width,height).data;
-  const leftBars:{x:number;score:number}[]=[];
-  for(let x=0;x<width;x+=3){
-   let score=0;
-   for(let y=Math.round(height*.08);y<height*.89;y+=7){
+  ctx.drawImage(bitmap,0,0,width,height);
+  const pixels=ctx.getImageData(0,0,width,height);
+  const d=pixels.data;
+  // Count yellow pixels by column; select border pair if they are sustained.
+  const counts=new Float32Array(width);
+  for(let x=0;x<width;x+=2) {
+   let n=0,total=0;
+   for(let y=Math.round(height*.08);y<Math.round(height*.90);y+=8){
     const i=(y*width+x)*4;
-    const r=pixels[i],g=pixels[i+1],b=pixels[i+2];
-    if(r>140&&g>106&&b<155&&r>b*1.5&&g>b*1.3)score++;
+    const r=d[i],g=d[i+1],b=d[i+2];
+    if(r>155&&g>105&&b<155&&r>b*1.4&&g>b*1.25)n++;
+    total++;
    }
-   if(score>Math.max(8,height*.055/7))leftBars.push({x,score});
+   counts[x]=n/Math.max(1,total);
   }
-  let x0=0,x1=width;
-  // Yellow border has two separate vertical strips, not a single colored object.
-  if(leftBars.length>5){
-   const regions:{start:number;end:number;score:number}[]=[];
-   for(const p of leftBars){
-    const prev=regions[regions.length-1];
-    if(prev&&p.x-prev.end<=18){prev.end=p.x;prev.score+=p.score;}
-    else regions.push({start:p.x,end:p.x,score:p.score});
-   }
-   regions.sort((a,b)=>b.score-a.score);
-   const best=regions.slice(0,6);
-   let bestPair:typeof best=[];
-   let pairScore=-1;
-   for(const l of best)for(const r of best){
-    if(r.start-l.end<width*.2)continue;
-    if(r.start-l.end>width*.85)continue;
-    const s=Math.min(l.score,r.score);
-    if(s>pairScore){bestPair=[l,r];pairScore=s;}
-   }
-   if(bestPair.length===2){
-    const left=Math.min(bestPair[0].start,bestPair[1].start);
-    const right=Math.max(bestPair[0].end,bestPair[1].end);
-    x0=Math.max(0,left-Math.round(width*.02));
-    x1=Math.min(width,right+Math.round(width*.02));
-   }
+  const candidates:Array<{x:number;score:number}>=[];
+  for(let x=0;x<width;x+=2)if(counts[x]>.25)candidates.push({x,score:counts[x]});
+  let left=0,right=width;
+  // Avoid edge stripping unless a credible two-bar pair exists.
+  let best=-1;
+  for(const a of candidates.filter((_,i)=>i%5===0))for(const b of candidates.filter((_,i)=>i%5===0)){
+   const gap=b.x-a.x;
+   if(gap<width*.22||gap>width*.85)continue;
+   const score=Math.min(a.score,b.score);
+   if(score>best){best=score;left=a.x;right=b.x;}
   }
-  const cropW=x1-x0;
-  // Keep whole height; header purchase date and lower draw dates are both needed.
+  if(best>.35){const pad=Math.round((right-left)*.06);left=Math.max(0,left-pad);right=Math.min(width,right+pad);}
+  const cropW=Math.max(1,right-left);
   const output=document.createElement("canvas");
-  const zoom=Math.min(2.2,Math.max(1,1250/cropW));
+  const zoom=Math.min(2.5,Math.max(1,1350/cropW));
   output.width=Math.round(cropW*zoom);
   output.height=Math.round(height*zoom);
-  const dest=output.getContext("2d");
-  if(!dest)return file;
-  dest.fillStyle="#fff";dest.fillRect(0,0,output.width,output.height);
-  dest.drawImage(base,x0,0,cropW,height,0,0,output.width,output.height);
-  const image=dest.getImageData(0,0,output.width,output.height);
-  const data=image.data;
-  for(let i=0;i<data.length;i+=4){
-   // Desaturate yellow borders and boost contrast of faded thermal printing.
-   const v=.299*data[i]+.587*data[i+1]+.114*data[i+2];
-   const contrasted=Math.min(255,Math.max(0,(v-135)*1.55+150));
-   data[i]=data[i+1]=data[i+2]=contrasted;
+  // Guard memory on mobile devices.
+  if(output.width*output.height>11_000_000){
+   const limit=Math.sqrt(11_000_000/(output.width*output.height));
+   output.width=Math.round(output.width*limit);output.height=Math.round(output.height*limit);
   }
-  dest.putImageData(image,0,0);
-  const blob=await new Promise<Blob|null>(resolve=>output.toBlob(resolve,"image/png"));
-  return blob||file;
+  const out=output.getContext("2d",{willReadFrequently:true});
+  if(!out)return file;
+  out.drawImage(canvas,left,0,cropW,height,0,0,output.width,output.height);
+  const p=out.getImageData(0,0,output.width,output.height);
+  for(let i=0;i<p.data.length;i+=4){
+   const v=Math.round(.299*p.data[i]+.587*p.data[i+1]+.114*p.data[i+2]);
+   // Moderately improve faded black without obliterating thin strokes.
+   const contrast=Math.max(0,Math.min(255,(v-128)*1.3+135));
+   p.data[i]=p.data[i+1]=p.data[i+2]=contrast;
+  }
+  out.putImageData(p,0,0);
+  return await new Promise<Blob>(resolve=>output.toBlob(b=>resolve(b||file),"image/png"));
+ }finally{bitmap.close();}
+}
+/** Supplemental region scan: the middle part of common Baden-Württemberg receipts
+ * contains the rows Spiel 1..N. Optional; original whole image is still scanned. */
+export async function receiptGameRegion(image:Blob):Promise<Blob>{
+ if(typeof document==="undefined")return image;
+ let bitmap:ImageBitmap;
+ try{bitmap=await createImageBitmap(image);}catch{return image;}
+ try{
+  const canvas=document.createElement("canvas");
+  // Wider y region to support longer/shorter receipts, not authoritative.
+  const from=Math.floor(bitmap.height*.15);
+  const h=Math.floor(bitmap.height*.46);
+  canvas.width=bitmap.width;canvas.height=h;
+  const ctx=canvas.getContext("2d");if(!ctx)return image;
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,h);
+  ctx.drawImage(bitmap,0,from,bitmap.width,h,0,0,bitmap.width,h);
+  return await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b||image),"image/png"));
  }finally{bitmap.close();}
 }

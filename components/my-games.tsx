@@ -1,7 +1,7 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
-import { parseEurojackpotReceipt } from "@/lib/receipt-parser";
-import { prepareReceiptImage } from "@/lib/receipt-image";
+import { parseEurojackpotReceipt, mergeReceiptScans } from "@/lib/receipt-parser";
+import { prepareReceiptImage, receiptGameRegion } from "@/lib/receipt-image";
 import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, RefreshCcw, Save, Coins, CalendarDays } from "lucide-react";
 type Line={main_numbers:number[];euro_numbers:number[]};
 type Ticket={id:string;purchased_on:string;total_cents:number;note:string;created_at:string;dates:string[];lines:Line[];payouts:{date:string;amount_cents:number}[]};
@@ -54,43 +54,46 @@ export default function MyGames({draws}:{draws:Draw[]}){
  }
  useEffect(()=>{void load();},[]);
  async function scan(file?:File) {
-   if(!file)return;
-   if(file.size>12*1024*1024){setError("Foto darf höchstens 12 MB groß sein");return;}
-   if(!file.type.startsWith("image/")){setError("Bitte ein Foto auswählen");return;}
-   setScanning(true);setError("");setScanWarnings([]);setMessage("");
-   setScanProgress("Quittung wird für die Texterkennung vorbereitet …");
-   try{
-     const {recognize}=await import("tesseract.js");
-     const prepared=await prepareReceiptImage(file);
-     const options={logger:(m:{status:string;progress:number})=>{
-       if(m.status==="recognizing text")setScanProgress("Texterkennung: "+Math.round((m.progress||0)*100)+" %");
-     }};
-     const first=await recognize(prepared,"eng",options);
-     let extracted=parseEurojackpotReceipt(first.data.text);
-     // A second pass on the unprocessed photo helps when thresholding loses faint digits.
-     if(!extracted.lines.length || extracted.lines.some(l=>!l.complete) || !extracted.drawDates.length){
-       if(prepared!==file){
-         setScanProgress("Zweiter Erkennungsversuch …");
-         const second=await recognize(file,"eng",options);
-         const alternative=parseEurojackpotReceipt(second.data.text);
-         const score=(x:typeof extracted)=>x.lines.filter(l=>l.complete).length*5+x.drawDates.length*2+Number(!!x.purchaseDate)+Number(!!x.amount);
-         if(score(alternative)>score(extracted))extracted=alternative;
-       }
-     }
-     setScanWarnings(extracted.warnings);
-     if(extracted.lines.length){
-       // Incomplete lines remain visible, so the user can correct them instead of silently losing data.
-       setLines(extracted.lines.map(l=>({main:l.main,euro:l.euro})));
-     }else setLines([emptyLine()]);
-     setPurchase(extracted.purchaseDate||"");
-     setDates(extracted.drawDates);
-     setAmount(extracted.amount||"");
-     setMessage(extracted.lines.length
-       ?extracted.lines.length+" Spiel(e) erkannt. Kaufdatum, Ziehungen und Betrag wurden soweit möglich vorausgefüllt. Bitte ALLE Daten mit dem Foto vergleichen."
-       :"Keine zuverlässigen Tippfelder erkannt. Bitte Zahlen und Daten manuell eintragen.");
-     setShowForm(true);
-   }catch(e){setError("Texterkennung fehlgeschlagen. Bitte Zahlen und Daten manuell eintragen.");setShowForm(true);}
-   finally{setScanning(false);setScanProgress("");}
+  if(!file)return;
+  if(file.size>12*1024*1024){setError("Foto darf höchstens 12 MB groß sein");return;}
+  if(!file.type.startsWith("image/")){setError("Bitte ein Foto auswählen");return;}
+  setScanning(true);setError("");setScanWarnings([]);setMessage("");setScanProgress("Bild wird vorbereitet …");
+  let worker:Awaited<ReturnType<typeof import("tesseract.js").createWorker>>|undefined;
+  try{
+    const tesseract=await import("tesseract.js");
+    const prepared=await prepareReceiptImage(file);
+    worker=await tesseract.createWorker("eng",1,{logger:m=>{
+      if(m.status==="recognizing text")setScanProgress("Erkennung: "+Math.round((m.progress||0)*100)+" %");
+    }});
+    // Each pass produces suggestions; disagreements remain blank until verified.
+    const results:ReturnType<typeof parseEurojackpotReceipt>[]=[];
+    const first=await worker.recognize(prepared);
+    results.push(parseEurojackpotReceipt(first.data.text));
+    const needsMore=results[0].lines.length===0||results[0].lines.some(l=>!l.complete)||!results[0].amount||!results[0].purchaseDate||!results[0].drawDates.length;
+    if(needsMore) {
+      setScanProgress("Zusätzliche Texterkennung …");
+      const second=await worker.recognize(file);
+      results.push(parseEurojackpotReceipt(second.data.text));
+    }
+    // Focused pass can recover rows which whole-receipt layout detection misses.
+    if(results.every(x=>x.lines.length<4||x.lines.some(l=>!l.complete))){
+      setScanProgress("Tippfelder werden geprüft …");
+      const region=await receiptGameRegion(prepared);
+      const third=await worker.recognize(region);
+      results.push(parseEurojackpotReceipt(third.data.text));
+    }
+    const extracted=mergeReceiptScans(results);
+    setScanWarnings(extracted.warnings);
+    setLines(extracted.lines.length?extracted.lines.map(l=>({main:l.main,euro:l.euro})):[emptyLine()]);
+    setPurchase(extracted.purchaseDate||"");
+    setDates(extracted.drawDates);
+    setAmount(extracted.amount||"");
+    setMessage(extracted.lines.length
+     ?extracted.lines.length+" Tippfelder gefunden. Bei Abweichungen zwischen den Erkennungsdurchläufen bleiben Felder zur Sicherheit leer. Bitte alle Werte mit der Originalquittung vergleichen."
+     :"Keine zuverlässigen Tippfelder erkannt. Bitte das Foto frontal, scharf und gut beleuchtet erneut aufnehmen oder Werte manuell eingeben.");
+    setShowForm(true);
+  }catch(e){console.error("OCR error",e);setError("Texterkennung fehlgeschlagen. Bitte das Foto erneut aufnehmen oder die Werte manuell eingeben.");setShowForm(true);}
+  finally{if(worker)await worker.terminate();setScanning(false);setScanProgress("");}
  }
  function updateLine(i:number,field:keyof FormLine,value:string){setLines(v=>v.map((line,j)=>i===j?{...line,[field]:value}:line));}
  function addDate(){if(!validDate(date)||!drawDay(date)){setError("Bitte einen gültigen Dienstag oder Freitag wählen");return;}if(!purchase){setError("Bitte zuerst Kaufdatum eintragen");return;}if(date<purchase){setError("Die Ziehung darf nicht vor dem Kauf liegen");return;}setDates(prev=>[...new Set([...prev,date])].sort());setDate("");setError("");}
