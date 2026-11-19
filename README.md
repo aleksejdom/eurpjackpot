@@ -1,48 +1,44 @@
-# Eurojackpot – Next.js Ziehungsarchiv
+# Eurojackpot – Next.js mit PostgreSQL
 
-Responsive Next.js Dashboard für Eurojackpot-Gewinnzahlen mit Suche, Kalender, Jahresfilter, Statistik und SQLite-Speicherung. Ziehungen werden aus der öffentlichen JSON-API von protomultix bezogen, die ihrerseits das Archiv von LOTTO Bayern verarbeitet. Alle Angaben ohne Gewähr.
+Responsive Next.js-Dashboard zur Darstellung historischer Ziehungszahlen. Kalender, Jahresfilter, Suche, Häufigkeitsstatistik und persistente PostgreSQL-Speicherung.
 
-## Lokal starten
+## Coolify / Hetzner
 
-Node.js 22 oder neuer verwenden:
+1. Repository in Coolify als **Application** auswählen, Build Pack **Dockerfile**, Port **3000**.
+2. In der Application unter **Environment Variables** die geheime Laufzeitvariable **`DATABASE_URL`** mit der vollständigen PostgreSQL-URL setzen. **Nicht** in GitHub oder einen öffentlichen Build-Log schreiben. Bei einem Coolify-Postgres-Dienst muss der interne Hostname aus der PostgreSQL-Ressource verwendet werden; `localhost` ist nicht korrekt, wenn App und DB in unterschiedlichen Containern laufen.
+3. Optional **`SYNC_INTERVAL_HOURS=6`** konfigurieren. Diese Variable bestimmt, nach wie vielen Stunden bei einem erneuten API-Seitenabruf aktualisiert wird.
+4. App und Postgres-Ressource müssen über ein gemeinsames Docker-Netz erreichbar sein. Postgres muss Zugriffe der Application erlauben.
+5. **Deploy** auslösen und die Logs überprüfen. Der erste Aufruf von `/api/draws` legt die Tabellen an und importiert die Historie automatisch.
+
+Die Datenbankresource benötigt **kein SQLite-Volume**. Die App nutzt den PostgreSQL-Dienst direkt über das Docker-Netz.
+
+## Lokal
+
+Node.js >= 22 und eine erreichbare PostgreSQL-Datenbank erforderlich.
 
 ```bash
 npm install
 cp .env.example .env.local
-# Für die lokale Entwicklung DATABASE_PATH=./data/database.sqlite setzen
+# DATABASE_URL in .env.local durch sichere persönliche Laufzeitverbindung ersetzen
 npm run dev
 ```
 
-Unter http://localhost:3000 öffnen. Der erste Abruf von `/api/draws` importiert die Historie in SQLite; danach wird spätestens nach dem in `SYNC_INTERVAL_HOURS` festgelegten Intervall bei einem erneuten Seitenaufruf aktualisiert. Über „Aktualisieren“ kann ein neuer Import manuell angestoßen werden. Ohne Seitenabruf läuft **kein Hintergrund-Cronjob**.
+## Datenbank
 
-## Coolify / Hetzner Deployment
+Zwei eigenständige Tabellen werden mit `CREATE TABLE IF NOT EXISTS` erzeugt: `eurojackpot_draws`, `eurojackpot_meta`. Es gibt keine DROP-Anweisung und keine Datenbankmigration alter Tabellen. Zeichnungen werden per Upsert gespeichert. Bestehende andere Tabellen werden nicht angetastet.
 
-1. In Coolify eine **Application → Git Repository** anlegen und dieses Repository auswählen. Nach dem Merge des Pull Requests `main` verwenden; zum Testen kann der Feature-Branch verwendet werden.
-2. **Build Pack: Dockerfile**, Container-Port **3000**.
-3. Die bereits angelegte SQLite-Datenbank muss als Storage am Next.js-Anwendungscontainer unter **`/var/lib/sqlite`** eingebunden sein. Der Screenshot zeigt einen Mount auf diesen Pfad; falls dieser bereits zur korrekten Application verknüpft wurde, keine zweite Verknüpfung anlegen.
-4. Environment Variables für die **Application**: `DATABASE_PATH=/var/lib/sqlite/database.sqlite`, `SYNC_INTERVAL_HOURS=6`. Optional `EUROJACKPOT_SOURCE_URL` auf eine kompatible JSON-Quelle setzen.
-5. Deploy auslösen und im Logs-Tab prüfen. Die Datenbank-Datei und das Verzeichnis müssen vom App-Container-Benutzer (UID 10001) beschreibbar sein. Berechtigungen des gemounteten Verzeichnisses bei Bedarf **gezielt** korrigieren, nachdem die tatsächliche UID/GID geprüft wurde, keine pauschalen rekursiven Schreibrechte vergeben.
-6. Die Anwendung zeigt die importierten Ziehungen an. Zum manuellen Aktualisieren den Refresh-Button nutzen.
+**Eine vorherige SQLite-Datenbank wird nicht automatisch migriert.** Daten werden stattdessen aus der öffentlichen Datenquelle neu importiert.
 
-### Wichtig: SQLite ist keine Netzwerkdatenbank
+## Datenquelle / Grenzen
 
-Die Coolify-Ressource `sqlite-database-2wujeqyoiqrozki3toguuj46` ist eine Resource-ID, **kein TCP-Hostname**. `localhost` ist für SQLite nicht relevant: Der Zugriff erfolgt über den gemounteten **Dateipfad** `/var/lib/sqlite/database.sqlite` und nicht über eine Host-/Port-Verbindung.
+Standard: https://github.com/protomultix/eurojackpot-api
 
-Die App führt ausschließlich `CREATE TABLE IF NOT EXISTS` und Upserts auf **eigenen** Tabellen `eurojackpot_draws` und `eurojackpot_meta` aus. Bestehende andere Tabellen bleiben unverändert. Vor produktivem Einsatz ein Backup der SQLite-Datei anlegen und Containerberechtigungen kontrollieren.
+Historische Ziehungen ab 25.03.2022 auf Basis des LOTTO-Bayern-Archivs. Automatischer Abruf beim ersten Öffnen und nach `SYNC_INTERVAL_HOURS` bei einem erneuten Seitenabruf; kein echter Cronjob. Manuelles Refresh per Oberfläche oder `GET /api/draws?refresh=1`. `GET /api/draws` liefert `draws`, `lastSync`, `syncError` und `source`.
 
-## API
+Alle Angaben ohne Gewähr. Keine offizielle Lotto-Anwendung und keine Vorhersage zukünftiger Zahlen.
 
-`GET /api/draws`: JSON mit `draws`, `lastSync`, `syncError`, `source`. `GET /api/draws?refresh=1` erzwingt den erneuten Import.
+## Hinweise
 
-## Datenquelle und Reichweite
-
-Standardquelle: https://github.com/protomultix/eurojackpot-api
-
-Die Quelle umfasst standardmäßig Ziehungen **ab dem 25.03.2022**. Frühere Ziehungen (ab Eurojackpot-Start 2012) sind mit dieser Konfiguration nicht enthalten. Die App zeigt ausschließlich importierte, validierte Ergebnisse an; bei Importfehlern bleiben alte Daten erhalten. Die App verspricht keine Vorhersagen oder offiziellen Live-Quoten.
-
-## Technische Hinweise
-
-- Node.js 22, Next.js App Router, TypeScript, `better-sqlite3`, `lucide-react`
-- SQLite mit WAL und `busy_timeout`
-- Die Anwendung verwendet zunächst Google Fonts per CSS; bei öffentlich/DSGVO-relevantem Betrieb sollten diese Fonts lokal gehostet oder durch Systemfonts ersetzt werden.
-- Ein öffentlich erreichbarer Refresh-Endpunkt ist nicht erforderlich, aber aktuell kann jeder Nutzer über den UI-Button den serverseitigen Re-Import starten. Für stärkere Last oder Drosselung Zugriff beschränken.
+- Bei offenem Zugriff kann der Refresh-Endpunkt von jedem Besucher ausgelöst werden; gegebenenfalls nach Deployment authentifizieren oder drosseln.
+- Die Oberfläche bindet derzeit Google Fonts extern ein. Für einen DSGVO-konformen öffentlichen Betrieb Fonts selbst hosten.
+- PostgreSQL-Zugangsdaten nie committen. Nach versehentlicher Veröffentlichung das Datenbankpasswort rotieren.

@@ -2,7 +2,6 @@ import "server-only";
 import { getMeta, saveDraws, type Draw } from "./db";
 const SOURCE = process.env.EUROJACKPOT_SOURCE_URL || "https://raw.githubusercontent.com/protomultix/eurojackpot-api/main/public/api/draws.json";
 let pending: Promise<{ synced: boolean; error?: string }> | null = null;
-
 function validDraw(x: unknown): x is Draw {
   if (!x || typeof x !== "object") return false;
   const d=x as Partial<Draw>;
@@ -13,7 +12,7 @@ function validDraw(x: unknown): x is Draw {
 }
 export async function syncIfNeeded(force=false): Promise<{ synced: boolean; error?: string }> {
   if (pending) return pending;
-  const previous=getMeta("last_sync");
+  const previous=await getMeta("last_sync");
   const hours=Math.max(1,Number(process.env.SYNC_INTERVAL_HOURS || 6) || 6);
   if(!force && previous && Date.now()-new Date(previous).getTime()<hours*3600000) return {synced:false};
   pending=(async()=>{
@@ -25,7 +24,7 @@ export async function syncIfNeeded(force=false): Promise<{ synced: boolean; erro
       if(!Array.isArray(records)) throw new Error("Unerwartetes JSON-Format");
       const validated=records.filter(validDraw);
       if(validated.length===0 || validated.length!==records.length) throw new Error("Ungültige oder fehlende Ziehungen; Import abgebrochen");
-      saveDraws(validated,new Date().toISOString());
+      await saveDraws(validated,new Date().toISOString());
       return {synced:true};
     } catch(e) {
       return {synced:false,error:e instanceof Error?e.message:String(e)};

@@ -1,39 +1,83 @@
 import "server-only";
-import Database from "better-sqlite3";
-import fs from "node:fs";
-import path from "node:path";
-
+import { Pool } from "pg";
 export type Draw = { date: string; date_de: string; main_numbers: number[]; euro_numbers: number[] };
-type DBRow = { date: string; main_numbers: string; euro_numbers: string };
-const dbFile = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "database.sqlite");
-let instance: Database.Database | undefined;
-
-export function getDB(): Database.Database {
-  if (instance) return instance;
-  fs.mkdirSync(path.dirname(dbFile), { recursive: true });
-  instance = new Database(dbFile);
-  instance.pragma("journal_mode = WAL");
-  instance.pragma("busy_timeout = 5000");
-  instance.exec("CREATE TABLE IF NOT EXISTS eurojackpot_draws (date TEXT PRIMARY KEY NOT NULL, main_numbers TEXT NOT NULL, euro_numbers TEXT NOT NULL, source TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP); CREATE TABLE IF NOT EXISTS eurojackpot_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);");
-  return instance;
+type DBRow = { date: string; main_numbers: number[]; euro_numbers: number[] };
+let pool: Pool | undefined;
+let init: Promise<void> | undefined;
+function getPool(): Pool {
+  if (!pool) {
+    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL ist nicht konfiguriert");
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 5,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    });
+  }
+  return pool;
+}
+async function ready() {
+  if (!init) {
+    init = (async () => {
+      await getPool().query(`CREATE TABLE IF NOT EXISTS eurojackpot_draws (
+          date DATE PRIMARY KEY,
+          main_numbers INTEGER[] NOT NULL,
+          euro_numbers INTEGER[] NOT NULL,
+          source TEXT NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE TABLE IF NOT EXISTS eurojackpot_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );`);
+    })().catch(error => { init = undefined; throw error; });
+  }
+  await init;
 }
 function rowToDraw(row: DBRow): Draw {
   const date = row.date;
-  return { date, date_de: date.slice(8,10)+"."+date.slice(5,7)+"."+date.slice(0,4), main_numbers: JSON.parse(row.main_numbers), euro_numbers: JSON.parse(row.euro_numbers) };
+  return {
+    date, date_de: date.slice(8,10)+"."+date.slice(5,7)+"."+date.slice(0,4),
+    main_numbers: row.main_numbers, euro_numbers: row.euro_numbers
+  };
 }
-export function getAllDraws(): Draw[] {
-  return (getDB().prepare("SELECT date, main_numbers, euro_numbers FROM eurojackpot_draws ORDER BY date DESC").all() as DBRow[]).map(rowToDraw);
+export async function getAllDraws(): Promise<Draw[]> {
+  await ready();
+  const result = await getPool().query<DBRow>("SELECT to_char(date, 'YYYY-MM-DD') AS date, main_numbers, euro_numbers FROM eurojackpot_draws ORDER BY date DESC");
+  return result.rows.map(rowToDraw);
 }
-export function getMeta(key: string): string | null {
-  return (getDB().prepare("SELECT value FROM eurojackpot_meta WHERE key = ?").get(key) as {value:string}|undefined)?.value ?? null;
+export async function getMeta(key: string): Promise<string | null> {
+  await ready();
+  const result = await getPool().query<{value:string}>("SELECT value FROM eurojackpot_meta WHERE key = $1", [key]);
+  return result.rows[0]?.value ?? null;
 }
-export function saveDraws(draws: Draw[], timestamp: string): number {
-  const db=getDB();
-  const insert=db.prepare("INSERT INTO eurojackpot_draws (date, main_numbers, euro_numbers, source) VALUES (?, ?, ?, ?) ON CONFLICT(date) DO UPDATE SET main_numbers=excluded.main_numbers, euro_numbers=excluded.euro_numbers, source=excluded.source, updated_at=CURRENT_TIMESTAMP");
-  const setMeta=db.prepare("INSERT INTO eurojackpot_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
-  db.transaction(()=>{
-    for(const d of draws) insert.run(d.date, JSON.stringify(d.main_numbers), JSON.stringify(d.euro_numbers), "LOTTO Bayern / protomultix");
-    setMeta.run("last_sync",timestamp);
-  })();
-  return draws.length;
+export async function saveDraws(draws: Draw[], timestamp: string): Promise<number> {
+  await ready();
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    for (const d of draws) {
+      await client.query(
+        `INSERT INTO eurojackpot_draws (date, main_numbers, euro_numbers, source)
+         VALUES ($1::date, $2::integer[], $3::integer[], $4)
+         ON CONFLICT (date) DO UPDATE SET
+         main_numbers=EXCLUDED.main_numbers,
+         euro_numbers=EXCLUDED.euro_numbers,
+         source=EXCLUDED.source,
+         updated_at=now()`,
+        [d.date, d.main_numbers, d.euro_numbers, "LOTTO Bayern / protomultix"]
+      );
+    }
+    await client.query(
+      `INSERT INTO eurojackpot_meta (key,value) VALUES ('last_sync',$1)
+       ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [timestamp]
+    );
+    await client.query("COMMIT");
+    return draws.length;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
