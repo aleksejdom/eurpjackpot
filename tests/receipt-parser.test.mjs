@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseEurojackpotReceipt,mergeReceiptScans} from "../lib/receipt-parser.ts";
+import {parseEurojackpotReceipt,parseDigitalEurojackpotScreenshot,isDigitalEurojackpotScreenshot,mergeReceiptScans} from "../lib/receipt-parser.ts";
 const sample=`SPIELQUITTUNG
 14.11.26 19:45:43
 EURO JACKPOT
@@ -69,4 +69,68 @@ test("invalid dates are not accepted",()=>{
  const s=parseEurojackpotReceipt("SPIELQUITTUNG\n31.02.26\nEURO JACKPOT\nSpiel 1\n5/50: 1 6 25 29 47\n2/12: 4 11\nEurojackpot: 18.11.26 Mi\nBetrag 8,35 €");
  assert.equal(s.purchaseDate,null);
  assert.deepEqual(s.drawDates,[]);
+});
+
+test("digital Spielauftrag screenshot: all four fields plus date and price",()=>{
+ const screenshot=`Für diese Ziehung liegen noch keine Ergebnisse vor
+Mein Spielauftrag
+Spielfeld 1
+Eurozahlen
+3 4 21 34 37 9 10
+Spielfeld 2
+Eurozahlen
+14 24 39 41 42 7 8
+Spielfeld 3
+Eurozahlen
+17 21 32 38 39 7 9
+Spielfeld 4
+Eurozahlen
+1 4 33 44 45 1 10
+Losnummer 8028742
+Kaufdatum Fr. 20.11.2026, 14:21
+Ziehung Fr. 20.11.2026, 20:00
+Preis 9,60 €
+Laufzeit 1 Woche`;
+ assert.equal(isDigitalEurojackpotScreenshot(screenshot),true);
+ const s=parseDigitalEurojackpotScreenshot(screenshot);
+ assert.deepEqual(s.lines.map(l=>l.main),["3 4 21 34 37","14 24 39 41 42","17 21 32 38 39","1 4 33 44 45"]);
+ assert.deepEqual(s.lines.map(l=>l.euro),["9 10","7 8","7 9","1 10"]);
+ assert.ok(s.lines.every(l=>l.complete));
+ assert.equal(s.purchaseDate,"2026-11-20");
+ assert.deepEqual(s.drawDates,["2026-11-20"]);
+ assert.equal(s.amount,"9,60");
+ assert.equal(s.weeks,1);
+});
+test("digital screenshot recognizes OCR-wrapped rows and keeps purchase separate from draw date",()=>{
+ const s=parseDigitalEurojackpotScreenshot(`Mein Spielauftrag
+Spielfeld 1 Eurozahlen
+3 4 21 34 37
+9 10
+Spielfeld 2
+Eurozahlen
+14 24 39 41 42 7 8
+Kaufdatum
+19.11.2026, 17:20
+Ziehung
+20.11.2026, 20:00
+Preis
+9,60 €
+Laufzeit: 1 Woche`);
+ assert.equal(s.lines.length,2);
+ assert.ok(s.lines.every(l=>l.complete));
+ assert.deepEqual(s.drawDates,["2026-11-20"]);
+ assert.equal(s.purchaseDate,"2026-11-19");
+ assert.equal(s.amount,"9,60");
+});
+test("digital screenshot does not infer numbers from metadata",()=>{
+ const s=parseDigitalEurojackpotScreenshot(`Mein Spielauftrag
+Spielfeld 1
+Eurozahlen
+3 4 21 34
+Losnummer 8028742
+Kaufdatum 20.11.2026
+Ziehung 20.11.2026
+Preis 9,60 €`);
+ assert.equal(s.lines.length,0);
+ assert(s.warnings.some(w=>w.includes("Spielfeld 1")));
 });

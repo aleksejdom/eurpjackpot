@@ -133,3 +133,106 @@ export function mergeReceiptScans(scans:ReceiptScan[]):ReceiptScan{
  if(!merged.lines.length)merged.warnings.push("Keine Tippfelder erkannt");
  return merged;
 }
+
+
+/**
+ * Digital ticket screenshots ("Mein Spielauftrag" / "Spielfeld N").
+ * Unlike a printed receipt, the seven numbers are displayed in one horizontal
+ * pill: 5 main values followed by 2 Euro values. All parsing is conservative:
+ * reject ambiguous/incomplete lines rather than inventing digits.
+ */
+export function isDigitalEurojackpotScreenshot(raw:string):boolean{
+ return /\b(?:Mein\s+Spielauftrag|Spielfel[d0]\s*\d+)\b/i.test(normalize(raw));
+}
+function digitalNumbers(raw:string):{main:string;euro:string}|null{
+ // Only numbers from the number strip; reject text, currency, date and longer IDs.
+ // OCR occasionally supplies a + or a bar between the main and Euro balls.
+ const compact=raw.replace(/[\u00a0|+•·()]/g," ").trim();
+ if(!/^[\d\s,;.-]+$/.test(compact))return null;
+ const parts=compact.match(/(?<!\d)\d{1,2}(?!\d)/g);
+ if(!parts||parts.length!==7)return null;
+ const values=parts.map(Number),main=values.slice(0,5),euro=values.slice(5);
+ if(main.some(n=>n<1||n>50)||new Set(main).size!==5||
+    euro.some(n=>n<1||n>12)||new Set(euro).size!==2)return null;
+ return {main:main.join(" "),euro:euro.join(" ")};
+}
+function digitalFieldLine(text:string):{index:number;rest:string}|null{
+ // Accept "Spielfeld 1" and the common OCR variations "Spiel feld 1".
+ const m=text.match(/\bSpiel\s*feld\s*([1-9]|1\d|20)\b\s*[:.]?/i);
+ if(!m)return null;
+ return {index:Number(m[1]),rest:text.slice((m.index??0)+m[0].length).trim()};
+}
+function labeledDate(raw:string,label:"Kaufdatum"|"Ziehung"):string|null{
+ const pattern=label==="Kaufdatum"?/\bKauf\s*datum\b/i:/\bZiehung\b/i;
+ const rows=normalize(raw).split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
+ const i=rows.findIndex(row=>pattern.test(row));
+ if(i<0)return null;
+ const dateText=[rows[i],rows[i+1]||""].join(" ");
+ return dateOf(dateText);
+}
+export function parseDigitalEurojackpotScreenshot(raw:string):ReceiptScan{
+ const result:ReceiptScan={lines:[],purchaseDate:null,drawDates:[],amount:null,weeks:null,warnings:[],recognized:isDigitalEurojackpotScreenshot(raw)};
+ const rows=normalize(raw).split(/\r?\n/).map(r=>r.trim()).filter(Boolean);
+ const fields=new Map<number,{main:string;euro:string}>();
+ let current:number|null=null;
+ let buffer:string[]=[];
+ function finish(){
+  if(current===null)return;
+  // The screenshots label Eurozahlen above the seven-ball row.
+  // Strip only those labels, never trim actual number digits.
+  const candidates=buffer.map(line=>line.replace(/\bEuro\s*zahlen\b/gi,"").trim())
+    .filter(Boolean);
+  let value:{main:string;euro:string}|null=null;
+  for(const line of candidates){
+   value=digitalNumbers(line);
+   if(value)break;
+  }
+  if(!value){
+   // OCR may wrap a single row into two lines (5 mains, then 2 Euros).
+   // Do not combine unrelated metadata from the screenshot.
+   const onlyDigits=candidates.filter(line=>/^[\d\s,;.+|•·()-]+$/.test(line));
+   if(onlyDigits.length===2)value=digitalNumbers(onlyDigits.join(" "));
+  }
+  if(value)fields.set(current,value);
+  else result.warnings.push("Spielfeld "+current+": 5 Haupt- und 2 Eurozahlen nicht eindeutig erkannt");
+ }
+ for(const row of rows){
+  const next=digitalFieldLine(row);
+  if(next){
+   finish();current=next.index;buffer=next.rest?[next.rest]:[];
+   continue;
+  }
+  if(current===null)continue;
+  if(/\b(?:Losnummer|Kaufdatum|Ziehung|Preis|Laufzeit|Bitte\s+beachten|Mein\s+Spielauftrag)\b/i.test(row)){
+   finish();current=null;buffer=[];
+   continue;
+  }
+  // OCR may emit misplaced header/footer text. Keep only compact field region.
+  if(buffer.length<6)buffer.push(row);
+ }
+ finish();
+ result.lines=[...fields].sort((a,b)=>a[0]-b[0]).map(([index,v])=>({index,...v,complete:true}));
+ // The purchase date can match the draw date, but they have separate labels.
+ result.purchaseDate=labeledDate(raw,"Kaufdatum");
+ const draw=labeledDate(raw,"Ziehung");
+ if(draw){
+  const weekday=new Date(draw+"T12:00:00Z").getUTCDay();
+  if(weekday===2||weekday===5)result.drawDates=[draw];
+  else result.warnings.push("Ziehungsdatum ist nicht Dienstag oder Freitag");
+ }
+ const priceLine=rows.findIndex(line=>/\bPreis\b/i.test(line));
+ if(priceLine>=0){
+  const text=rows.slice(priceLine,priceLine+2).join(" ");
+  const match=text.match(/\bPreis\s*[:.]?\s*(\d{1,5})\s*[,\.]\s*(\d{2})\s*€?/i);
+  if(match)result.amount=match[1]+","+match[2];
+ }
+ const duration=rows.join(" ").match(/\bLaufzeit\s*[:.]?\s*(\d{1,2})\s*Woch/i);
+ if(duration)result.weeks=Number(duration[1]);
+ // Do not fabricate additional draw dates; the screenshot explicitly states
+ // one draw, even though the "Laufzeit" describes the ticket duration.
+ if(!result.lines.length)result.warnings.push("Keine lesbaren Spielfelder erkannt");
+ if(!result.purchaseDate)result.warnings.push("Kaufdatum prüfen");
+ if(!result.drawDates.length)result.warnings.push("Ziehungsdatum prüfen");
+ if(!result.amount)result.warnings.push("Preis prüfen");
+ return result;
+}

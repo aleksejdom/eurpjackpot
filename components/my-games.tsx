@@ -1,7 +1,7 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
-import { parseEurojackpotReceipt, mergeReceiptScans } from "@/lib/receipt-parser";
-import { prepareReceiptImage, receiptGameRegion } from "@/lib/receipt-image";
+import { parseEurojackpotReceipt, parseDigitalEurojackpotScreenshot, isDigitalEurojackpotScreenshot, mergeReceiptScans } from "@/lib/receipt-parser";
+import { prepareReceiptImage, receiptGameRegion, digitalTicketNumberRegion } from "@/lib/receipt-image";
 import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, Save, Coins, CalendarDays, Pencil, X } from "lucide-react";
 type Line={main_numbers:number[];euro_numbers:number[]};
 type Ticket={id:string;purchased_on:string;total_cents:number;note:string;created_at:string;dates:string[];lines:Line[];payouts:{date:string;amount_cents:number}[]};
@@ -74,48 +74,77 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
    }catch{/* Display unavailable quota instead of claiming a payout. */}
  }
  useEffect(()=>()=>{if(receiptPreview)URL.revokeObjectURL(receiptPreview);},[receiptPreview]);
- async function scan(file?:File) {
+ async function scan(file?:File,preferred:"auto"|"camera"|"screenshot"="auto") {
   if(!file)return;
-  if(file.size>12*1024*1024){setError("Foto darf höchstens 12 MB groß sein");return;}
-  if(!file.type.startsWith("image/")){setError("Bitte ein Foto auswählen");return;}
+  if(file.size>12*1024*1024){setError("Bild darf höchstens 12 MB groß sein");return;}
+  if(!file.type.startsWith("image/")){setError("Bitte ein Foto oder einen Screenshot auswählen");return;}
   setReceiptPreview(URL.createObjectURL(file));
-  setScanning(true);setError("");setScanWarnings([]);setMessage("");setScanProgress("Bild wird vorbereitet …");
+  setScanning(true);setError("");setScanWarnings([]);setMessage("");setScanProgress("Bild wird analysiert …");
   let worker:Awaited<ReturnType<typeof import("tesseract.js").createWorker>>|undefined;
   try{
     const tesseract=await import("tesseract.js");
-    const prepared=await prepareReceiptImage(file);
     worker=await tesseract.createWorker("eng",1,{logger:m=>{
-      if(m.status==="recognizing text")setScanProgress("Erkennung: "+Math.round((m.progress||0)*100)+" %");
+      if(m.status==="recognizing text")setScanProgress("Texterkennung: "+Math.round((m.progress||0)*100)+" %");
     }});
-    // Each pass produces suggestions; disagreements remain blank until verified.
+    // Original first: screenshots have crisp UI text that preprocessing may damage.
+    const initial=await worker.recognize(file);
+    const digital=isDigitalEurojackpotScreenshot(initial.data.text)||
+      (preferred==="screenshot"&&!/SPIEL\s*QUITTUNG|5\s*\/\s*50/i.test(initial.data.text));
     const results:ReturnType<typeof parseEurojackpotReceipt>[]=[];
-    const first=await worker.recognize(prepared);
-    results.push(parseEurojackpotReceipt(first.data.text));
-    const needsMore=results[0].lines.length===0||results[0].lines.some(l=>!l.complete)||!results[0].amount||!results[0].purchaseDate||!results[0].drawDates.length;
-    if(needsMore) {
-      setScanProgress("Zusätzliche Texterkennung …");
-      const second=await worker.recognize(file);
-      results.push(parseEurojackpotReceipt(second.data.text));
-    }
-    // Focused pass can recover rows which whole-receipt layout detection misses.
-    if(results.every(x=>x.lines.length<4||x.lines.some(l=>!l.complete))){
-      setScanProgress("Tippfelder werden geprüft …");
-      const region=await receiptGameRegion(prepared);
-      const third=await worker.recognize(region);
-      results.push(parseEurojackpotReceipt(third.data.text));
+    if(digital){
+      results.push(parseDigitalEurojackpotScreenshot(initial.data.text));
+      setScanProgress("Spielfelder und Eurozahlen werden aus dem Screenshot gelesen …");
+      const region=await digitalTicketNumberRegion(file);
+      const second=await worker.recognize(region);
+      results.push(parseDigitalEurojackpotScreenshot(second.data.text));
+      if(results.every(r=>r.lines.length===0||r.lines.some(l=>!l.complete))){
+        setScanProgress("Screenshot wird mit stärkerem Kontrast geprüft …");
+        const prepared=await prepareReceiptImage(file);
+        const third=await worker.recognize(prepared);
+        results.push(parseDigitalEurojackpotScreenshot(third.data.text));
+      }
+    }else{
+      results.push(parseEurojackpotReceipt(initial.data.text));
+      const needsMore=results[0].lines.length===0||results[0].lines.some(l=>!l.complete)||
+        !results[0].amount||!results[0].purchaseDate||!results[0].drawDates.length;
+      const prepared=await prepareReceiptImage(file);
+      if(needsMore){
+        setScanProgress("Papierquittung wird mit verbessertem Kontrast geprüft …");
+        const second=await worker.recognize(prepared);
+        results.push(parseEurojackpotReceipt(second.data.text));
+      }
+      if(results.every(r=>r.lines.length===0||r.lines.some(l=>!l.complete))){
+        setScanProgress("Tippfelder werden einzeln geprüft …");
+        const region=await receiptGameRegion(prepared);
+        const third=await worker.recognize(region);
+        results.push(parseEurojackpotReceipt(third.data.text));
+      }
     }
     const extracted=mergeReceiptScans(results);
+    // Keep numeric field order: the UI has no separate field-index metadata.
+    const ordered=[...extracted.lines].sort((a,b)=>a.index-b.index);
     setScanWarnings(extracted.warnings);
-    setLines(extracted.lines.length?extracted.lines.map(l=>({main:l.main,euro:l.euro})):[emptyLine()]);
+    setLines(ordered.length?ordered.map(l=>({main:l.main,euro:l.euro})):[emptyLine()]);
     setPurchase(extracted.purchaseDate||"");
     setDates(extracted.drawDates);
     setAmount(extracted.amount||"");
-    setMessage(extracted.lines.length
-     ?extracted.lines.length+" Tippfelder gefunden. Bei Abweichungen zwischen den Erkennungsdurchläufen bleiben Felder zur Sicherheit leer. Bitte alle Werte mit der Originalquittung vergleichen."
-     :"Keine zuverlässigen Tippfelder erkannt. Bitte das Foto frontal, scharf und gut beleuchtet erneut aufnehmen oder Werte manuell eingeben.");
+    if(digital){
+      const reference=initial.data.text.match(/\bLosnummer\s*[:.]?\s*(\d{5,12})\b/i)?.[1];
+      if(reference)setNote("Losnummer "+reference);
+    }
+    setMessage(ordered.length
+      ?(digital?"Digitaler Spielauftrag":"Lotto-Quittung")+" erkannt: "+ordered.length+
+       " Tippfelder. Bitte alle Zahlen, Eurozahlen, Ziehung, Kaufdatum und Preis vor dem Speichern überprüfen."
+      :"Keine eindeutigen Tippfelder erkannt. Du kannst die Werte manuell eintragen oder eine schärfere Aufnahme verwenden.");
     setShowForm(true);
-  }catch(e){console.error("OCR error",e);setError("Texterkennung fehlgeschlagen. Bitte das Foto erneut aufnehmen oder die Werte manuell eingeben.");setShowForm(true);}
-  finally{if(worker)await worker.terminate();setScanning(false);setScanProgress("");}
+  }catch(e){
+    console.error("Ticket OCR failed",e);
+    setError("Texterkennung fehlgeschlagen. Bitte anderes Bild auswählen oder alle Werte manuell eintragen.");
+    setShowForm(true);
+  }finally{
+    if(worker)await worker.terminate();
+    setScanning(false);setScanProgress("");
+  }
  }
  function clearForm(){
   setEditingId(null);setShowForm(false);setPurchase("");setAmount("");setNote("");
@@ -208,8 +237,11 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
   return {best,compared};
  };
  const formPanel=<div className="games-panel">
-   <div className="games-title"><h2>{editingId?"Spielschein bearbeiten":"Neuen Schein erfassen"}</h2><p>Die App erkennt Spielnummern, 5/50, 2/12, Kaufdatum, Eurojackpot-Ziehungsdatum, Laufzeit und Betrag soweit lesbar. Prüfe alle Vorschläge sorgfältig.</p></div>
-   <label className="capture"><Camera size={24}/><strong>{scanning?scanProgress:"Eurojackpot-Quittung fotografieren oder auswählen"}</strong><span>Quittung mit gelben LOTTO-Rändern möglichst vollständig und scharf fotografieren. Das Foto wird nicht auf dem Server gespeichert.</span><input aria-label="Spielschein fotografieren" type="file" accept="image/*" capture="environment" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file);e.target.value="";}}/></label>
+   <div className="games-title"><h2>{editingId?"Spielschein bearbeiten":"Neuen Schein erfassen"}</h2><p>Erkennt Papierquittungen und digitale Spielaufträge aus Screenshots: 5 Hauptzahlen, 2 Eurozahlen, Kaufdatum, Ziehung und Gesamtpreis. Prüfe jeden Vorschlag vor dem Speichern.</p></div>
+   <div className="capture-options">
+    <label className="capture"><Camera size={24}/><strong>{scanning?scanProgress:"Papierquittung fotografieren"}</strong><span>Lotto-Quittung vollständig und scharf mit der Handykamera aufnehmen.</span><input aria-label="Lotto-Quittung mit Kamera fotografieren" type="file" accept="image/*" capture="environment" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file,"camera");e.target.value="";}}/></label>
+    <label className="capture"><Camera size={24}/><strong>Screenshot aus der Fotomediathek auswählen</strong><span>Digitale Spielaufträge mit „Spielfeld“, „Eurozahlen“, „Kaufdatum“, „Ziehung“ und „Preis“ werden ebenfalls erkannt.</span><input aria-label="Screenshot oder Spielscheinbild hochladen" type="file" accept="image/*" disabled={scanning||busy} onChange={e=>{const file=e.target.files?.[0];void scan(file,"screenshot");e.target.value="";}}/></label>
+   </div>
    {scanWarnings.length>0&&<div className="scan-review" role="status"><strong>Beim Prüfen beachten:</strong><ul>{scanWarnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
    {receiptPreview&&<details className="scan-preview" open><summary>Originalquittung zum Zahlenvergleich anzeigen</summary><img src={receiptPreview} alt="Originalaufnahme zur Kontrolle der automatisch erkannten Daten"/></details>}
    <div className="games-form-grid"><label className="field">Kaufdatum<input type="date" value={purchase} onChange={e=>setPurchase(e.target.value)}/></label><label className="field">Gesamtpreis in € (inkl. Gebühren)<input type="text" inputMode="decimal" placeholder="z. B. 12,50" value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>

@@ -82,3 +82,25 @@ export async function receiptGameRegion(image:Blob):Promise<Blob>{
   return await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b||image),"image/png"));
  }finally{bitmap.close();}
 }
+
+/** Keep digital app screenshots untouched for the first OCR pass.
+ * The number rows occupy the central area of common "Mein Spielauftrag"
+ * screenshots. A supplemental central crop helps Tesseract read the balls.
+ */
+export async function digitalTicketNumberRegion(image:Blob):Promise<Blob>{
+ if(typeof document==="undefined")return image;
+ let bitmap:ImageBitmap;
+ try{bitmap=await createImageBitmap(image);}catch{return image;}
+ try{
+  const y0=Math.floor(bitmap.height*.14);
+  const y1=Math.floor(bitmap.height*.80);
+  const canvas=document.createElement("canvas");
+  canvas.width=bitmap.width;
+  canvas.height=y1-y0;
+  const ctx=canvas.getContext("2d");
+  if(!ctx)return image;
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(bitmap,0,y0,bitmap.width,y1-y0,0,0,canvas.width,canvas.height);
+  return await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b||image),"image/png"));
+ }finally{bitmap.close();}
+}
