@@ -273,3 +273,133 @@
  .capture-options .capture{min-height:120px;padding:20px 14px}
  .capture-options .capture strong{font-size:14px}
 }
+
+/* FLUID LAYOUT – shared responsiveness for phones, tablets and desktops.
+   Percentage widths + clamp keep the page proportional at any viewport. */
+:root{
+ --page-gutter:clamp(12px,3vw,44px);
+ --card-gutter:clamp(13px,2.8vw,32px);
+ --ball-size:clamp(21px, min(7.5vw, 4.2vh), 40px);
+ --ball-gap:clamp(2px,.7vw,7px);
+}
+html{width:100%;max-width:100%;-webkit-text-size-adjust:100%}
+body{width:100%;min-width:0;max-width:100%;overflow-x:clip}
+.shell{width:100%;max-width:1440px;margin-inline:auto;padding-inline:var(--page-gutter)}
+.shell *, .ticket-editor-page *, .auth-screen *{min-width:0}
+.topbar{min-height:70px;height:auto;padding-block:16px;gap:12px}
+.top-right{gap:clamp(6px,1.5vw,18px);flex-wrap:wrap;justify-content:flex-end}
+.intro{padding:clamp(30px,6vw,80px) 0 clamp(20px,3vw,45px)}
+.intro h1{font-size:clamp(35px,7.4vw,76px);letter-spacing:clamp(-3.8px,-.3vw,-1px);overflow-wrap:break-word}
+.stat,.featured,.history,.frequencies,.games-panel{padding:var(--card-gutter)}
+.stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.feature-body{flex-wrap:wrap}
+.feature-body>*{max-width:100%;min-width:0}
+.feature-body .balls{width:100%;justify-content:flex-start}
+.balls,.ticket-balls{width:100%;max-width:100%;min-width:0;flex-wrap:nowrap;justify-content:flex-start;gap:var(--ball-gap)}
+.ball-group{display:contents}
+.balls .ball,.ticket-balls .ticket-ball{
+ flex:0 0 var(--ball-size);
+ width:var(--ball-size);
+ height:var(--ball-size);
+ min-width:0;min-height:0;
+ font-size:clamp(10px,2.75vw,15px);
+ line-height:1;
+}
+.balls .plus,.ticket-balls .ticket-divider{flex:0 0 auto;margin:0 2px;font-size:clamp(11px,3vw,19px);white-space:nowrap}
+.feature-body .ball{width:var(--ball-size);height:var(--ball-size);flex-basis:var(--ball-size)}
+.draw-row{gap:clamp(6px,2vw,18px)}
+.draw-row .balls{flex:1 1 auto;min-width:0}
+.draw-row .ball{width:var(--ball-size);height:var(--ball-size);flex-basis:var(--ball-size)}
+.draw-date{min-width:0}
+.date-icon{flex-shrink:0}
+.featured,.history,.frequencies,.games-panel,.ticket-card,.ticket-draw,.generated-row{max-width:100%}
+.games-hero{flex-wrap:wrap}
+.games-hero>div{flex:1 1 250px}
+.games-form-grid,.generator-settings,.frequency-columns,.generator-frequency-grid,.games-summary-grid{min-width:0}
+.line-editor .field{min-width:0}
+.line-editor .field input{min-width:0;width:100%}
+.ticket-heading{gap:10px}
+.ticket-expand{flex:1 1 auto;overflow-wrap:anywhere}
+.ticket-heading-end{flex:0 0 auto}
+.ticket-compact-hits{white-space:normal}
+.ticket-draw-header{flex-wrap:wrap}
+.ticket-line-result{flex-wrap:wrap;align-items:flex-start}
+.ticket-line-result .ticket-balls{width:auto;flex:1 1 100%}
+.ticket-result-meta{flex:1 1 auto;align-items:flex-start}
+.generated-row{min-width:0;flex-wrap:wrap}
+.generated-row .ticket-balls{width:auto;flex:1 1 100%;justify-content:flex-start}
+.generator-number-grid{grid-template-columns:repeat(10,minmax(0,1fr))}
+.generator-number{width:100%;min-width:0}
+.auth-card{max-width:min(465px,100%);padding:clamp(20px,5vw,42px)}
+.ticket-editor-page{width:100%;max-width:100%;padding-inline:var(--page-gutter)}
+.ticket-editor-shell{width:100%;max-width:780px;margin-inline:auto}
+.capture-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:1000px){
+ .draw-row{flex-wrap:wrap}
+ .draw-date{flex:1 1 100%}
+ .draw-row .balls{flex:1 1 auto;width:auto}
+ .row-tag{margin-left:auto}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:680px){
+ :root{--ball-size:clamp(22px,7vw,33px);--ball-gap:clamp(2px,.6vw,4px)}
+ .shell{padding-inline:clamp(12px,3.6vw,22px)}
+ .stats{grid-template-columns:1fr}
+ .stat{padding:clamp(15px,4vw,24px)}
+ .featured,.history,.frequencies{padding:clamp(13px,4vw,22px)}
+ .feature-body{gap:15px}
+ .feature-body .balls{max-width:100%}
+ .feature-body .ball,.draw-row .ball{width:var(--ball-size);height:var(--ball-size);flex-basis:var(--ball-size);font-size:clamp(10px,3vw,13px)}
+ .feature-body .plus,.draw-row .plus{margin:0 1px;font-size:clamp(10px,3vw,14px)}
+ .draw-row{padding:clamp(12px,3.5vw,18px)}
+ .draw-row .balls{width:100%;flex:1 1 100%;max-width:100%;gap:var(--ball-gap)}
+ .draw-row .row-tag{display:none}
+ .draw-date{min-width:0}
+ .history-heading{flex-wrap:wrap}
+ .filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .filter{min-width:0}
+ .filter.search{grid-column:1/-1}
+ .filter input,.filter select{width:100%;min-width:0;max-width:100%;font-size:16px}
+ .reset{grid-column:1/-1;width:max-content}
+ .dashboard-tabs{width:100%;max-width:100%;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+ .dashboard-tabs::-webkit-scrollbar{display:none}
+ .dashboard-tabs button{flex:0 0 auto;padding:11px 12px;white-space:nowrap}
+ .games-view,.random-view{padding-block:clamp(24px,5vw,40px)}
+ .games-hero h1{font-size:clamp(30px,8vw,46px)}
+ .games-hero>.primary-btn{width:100%;min-height:45px}
+ .games-panel{padding:clamp(13px,3.7vw,20px)}
+ .games-form-grid,.generator-settings,.games-summary-grid,.frequency-columns,.generator-frequency-grid,.capture-options{grid-template-columns:minmax(0,1fr)}
+ .line-editor{display:grid;grid-template-columns:30px minmax(0,1fr) minmax(0,.52fr) 34px;gap:6px;align-items:end}
+ .line-editor .line-index{width:30px;height:44px}
+ .line-editor .small-btn{width:34px;height:44px}
+ .line-editor .field{font-size:12px}
+ .line-editor .field input{padding-inline:7px;font-size:16px}
+ .date-editor{flex-wrap:wrap}
+ .date-editor input{width:100%;font-size:16px}
+ .date-editor button{width:100%}
+ .ticket-heading{flex-wrap:wrap;align-items:flex-start}
+ .ticket-expand{flex:1 1 calc(100% - 95px);gap:7px}
+ .ticket-expand span{min-width:0}
+ .ticket-heading-end{gap:6px;margin-left:auto}
+ .ticket-heading-end strong{font-size:14px}
+ .ticket-heading-end .small-btn{width:32px;height:34px}
+ .ticket-line-result .ticket-balls{width:100%;flex:1 1 100%}
+ .ticket-balls .ticket-ball{width:var(--ball-size);height:var(--ball-size);flex-basis:var(--ball-size);font-size:clamp(10px,3vw,13px)}
+ .generator-number-grid{grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+ .generated-row{gap:9px}
+ .generated-row .ticket-balls{width:100%;flex:1 1 100%}
+ .ticket-editor-page{padding-block:12px 50px}
+ .ticket-editor-shell{margin-top:26px}
+ .ticket-editor-shell h1{font-size:clamp(30px,7vw,44px)}
+}
+@media(max-width:380px){
+ :root{--ball-size:clamp(20px,6.5vw,25px);--ball-gap:2px}
+ .ticket-balls .ticket-ball{width:var(--ball-size);height:var(--ball-size);flex-basis:var(--ball-size)}
+ .feature-body .ball,.draw-row .ball{width:var(--ball-size);height:var(--ball-size);flex-basis:var(--ball-size)}
+ .ticket-heading-end{flex-wrap:wrap;justify-content:flex-end}
+ .generator-number-grid{grid-template-columns:repeat(6,minmax(0,1fr))}
+}
+@media(min-width:681px) and (max-width:1100px){
+ .feature-body .balls{width:100%}
+ .games-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
