@@ -166,3 +166,33 @@ Zahlenreihen in mehreren Feldern werden als verdächtig erkannt und nicht
 automatisch in jedes Feld übernommen. Bei fehlender Übereinstimmung bleibt
 die Zahl leer und muss vor dem Speichern anhand des Originalbilds
 kontrolliert werden. **Der Scan ist niemals eine amtliche Gewinnprüfung.**
+
+
+### Digitale Screenshots: kreisbasierte Erkennung (Version November 2026)
+
+Die Texterkennung von kompletten Bildseiten hat wiederholt dieselben Zahlen in
+verschiedene Spielfelder übernommen. Der neue Standardpfad für digitale
+Lotto-Screenshots verwendet deshalb **kein Ganzseiten-OCR für Zahlenfelder**:
+
+1. Canvas-Bildanalyse erkennt die hellgrauen horizontalen Zahlenleisten
+   anhand ihrer Pixelstruktur (auch auf skalierten Smartphones).
+2. Die fünf Hauptzahlen und zwei Eurozahlen werden **je Zahlenkreis** an
+   ihrer geometrischen Position ausgeschnitten. Jedes Feld bleibt unabhängig.
+3. Tesseract liest die ausgeschnittenen 7 × N Zahlen zunächst in einer
+   vertikalen Blattvorlage; ein zweiter Durchlauf nutzt eine andere
+   Ausschnittgröße. Widersprüchliche Ziffern bekommen einen dritten Durchlauf.
+4. Nur Zahlen, die mindestens zwei Durchläufe übereinstimmend ergeben, werden
+   übernommen. Anschließend prüft die App 5 unterschiedliche Hauptzahlen von
+   1–50 und 2 unterschiedliche Eurozahlen von 1–12.
+5. Unvollständige Felder, ungültige Zahlen und verdächtige identische
+   ganze Tippfelder bleiben als kontrollierbare Lücken sichtbar.
+
+Kaufdatum, Ziehung, Betrag und Losnummer werden weiterhin separat aus dem
+Screenshot-Text ausgelesen. Die alten Ganzseiten-Zahlen dürfen die erkannten
+Kreiswerte **nicht überschreiben**. Bei unbekannten Screenshot-Designs ohne
+erkennbare Zahlenleisten greift ein vorsichtiger Fallback mit Warnungen.
+
+**Keine OCR kann eine hundertprozentige Trefferquote bei beliebigen Bild-
+und Screenshot-Qualitäten garantieren.** Vor dem Speichern müssen die Zahlen
+mit dem Originalbild verglichen werden. Die Verarbeitung bleibt lokal im
+Browser; die Bilddatei wird nicht auf dem Server gespeichert.

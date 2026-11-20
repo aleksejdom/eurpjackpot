@@ -1,7 +1,8 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
 import { parseEurojackpotReceipt, parseDigitalEurojackpotScreenshot, isDigitalEurojackpotScreenshot, digitalFieldRegionsFromTsv, spatialDigitalLinesFromTsv, parseDigitalNumbersFromText, reconcileDigitalFieldScans, mergeReceiptScans } from "@/lib/receipt-parser";
-import { prepareReceiptImage, receiptGameRegion, digitalTicketNumberRegion, prepareDigitalScreenshot, cropOcrRegion } from "@/lib/receipt-image";
+import { prepareReceiptImage, receiptGameRegion, prepareDigitalScreenshot } from "@/lib/receipt-image";
+import { scanDigitalBallNumbers } from "@/lib/digital-circle-ocr";
 import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, Save, Coins, CalendarDays, Pencil, X } from "lucide-react";
 type Line={main_numbers:number[];euro_numbers:number[]};
 type Ticket={id:string;purchased_on:string;total_cents:number;note:string;created_at:string;dates:string[];lines:Line[];payouts:{date:string;amount_cents:number}[]};
@@ -91,44 +92,36 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
     const initial=await worker.recognize(file,{}, {tsv:true});
     const digital=isDigitalEurojackpotScreenshot(initial.data.text)||
       (preferred==="screenshot"&&!/SPIEL\s*QUITTUNG|5\s*\/\s*50/i.test(initial.data.text));
-    const results:ReturnType<typeof parseEurojackpotReceipt>[]=[];
-    let spatial:ReturnType<typeof spatialDigitalLinesFromTsv>=[];
+    let extracted:ReturnType<typeof parseEurojackpotReceipt>;
     if(digital){
-      results.push(parseDigitalEurojackpotScreenshot(initial.data.text));
-      spatial=typeof initial.data.tsv==="string"?spatialDigitalLinesFromTsv(initial.data.tsv):[];
-      setScanProgress("Digitale Spielauftrag-Zahlen werden genauer gelesen …");
+      const first=parseDigitalEurojackpotScreenshot(initial.data.text);
+      setScanProgress("Kaufdatum, Ziehung und Preis werden geprüft …");
       const enhanced=await prepareDigitalScreenshot(file);
-      const enhancedResult=await worker.recognize(enhanced);
-      results.push(parseDigitalEurojackpotScreenshot(enhancedResult.data.text));
-      // TSV box coordinates are relative to the original image. Re-OCR
-      // selected field regions at 1.0–2.7x size, not the entire screenshot.
-      const regions=typeof initial.data.tsv==="string"
-        ?digitalFieldRegionsFromTsv(initial.data.tsv):[];
-      if(regions.length){
-        await worker.setParameters({tessedit_pageseg_mode:tesseract.PSM.SINGLE_BLOCK});
-        for(const [i,region] of regions.slice(0,20).entries()){
-          setScanProgress("Spielfeld "+(i+1)+" von "+Math.min(regions.length,20)+" wird geprüft …");
-          const cropped=await cropOcrRegion(file,region);
-          const focused=await worker.recognize(cropped);
-          const nums=parseDigitalNumbersFromText(focused.data.text);
-          if(nums){
-            results.push(parseDigitalEurojackpotScreenshot(
-              "Mein Spielauftrag\nSpielfeld "+region.index+"\n"+
-              nums.main+" "+nums.euro
-            ));
-          }
-        }
-        await worker.setParameters({tessedit_pageseg_mode:tesseract.PSM.AUTO});
-      }else if(results.every(r=>r.lines.length===0||r.lines.some(l=>!l.complete))){
-        // Layout may not expose heading coordinates; preserve older fallback.
-        const region=await digitalTicketNumberRegion(file);
-        const retry=await worker.recognize(region);
-        results.push(parseDigitalEurojackpotScreenshot(retry.data.text));
+      const metadataPass=await worker.recognize(enhanced);
+      const second=parseDigitalEurojackpotScreenshot(metadataPass.data.text);
+      const mergedMeta=mergeReceiptScans([first,second]);
+      const bubbles=await scanDigitalBallNumbers(file,worker,tesseract.PSM,setScanProgress);
+      if(bubbles){
+        // Critical: NEVER merge numbers inferred from the full-page OCR.
+        // Only the 7 individually segmented bubbles may populate each row.
+        extracted={
+          ...mergedMeta,
+          lines:bubbles.lines,
+          warnings:[
+            ...mergedMeta.warnings.filter(x=>/Kaufdatum|Betrag|Preis|Ziehung|Laufzeit/.test(x)),
+            ...bubbles.warnings
+          ]
+        };
+      }else{
+        // For unexpected digital layouts retain conservative field-specific
+        // OCR but reject duplicate rows; ask the user to verify manually.
+        const spatial=typeof initial.data.tsv==="string"?
+          spatialDigitalLinesFromTsv(initial.data.tsv):[];
+        extracted=reconcileDigitalFieldScans([first,second],spatial);
+        extracted.warnings.unshift("Das Zahlenkreis-Layout konnte nicht sicher erkannt werden. Alle Spielfelder bitte manuell prüfen.");
       }
     }else{
-      results.push(parseEurojackpotReceipt(initial.data.text));
-      // Compare original and contrast-corrected printing even when the
-      // original looked complete: digit substitution is common on paper.
+      const results:ReturnType<typeof parseEurojackpotReceipt>[]=[parseEurojackpotReceipt(initial.data.text)];
       setScanProgress("Papierquittung wird mit verbessertem Kontrast geprüft …");
       const prepared=await prepareReceiptImage(file);
       const second=await worker.recognize(prepared);
@@ -139,8 +132,8 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
         const third=await worker.recognize(region);
         results.push(parseEurojackpotReceipt(third.data.text));
       }
+      extracted=mergeReceiptScans(results);
     }
-    const extracted=digital?reconcileDigitalFieldScans(results,spatial):mergeReceiptScans(results);
     // Keep numeric field order: the UI has no separate field-index metadata.
     const ordered=[...extracted.lines].sort((a,b)=>a.index-b.index);
     // Preserve field identity if an individual OCR field was unreadable:
