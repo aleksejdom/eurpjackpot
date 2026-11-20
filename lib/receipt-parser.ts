@@ -163,7 +163,7 @@ function digitalFieldLine(text:string):{index:number;rest:string}|null{
  return {index:Number(m[1]),rest:text.slice((m.index??0)+m[0].length).trim()};
 }
 function labeledDate(raw:string,label:"Kaufdatum"|"Ziehung"):string|null{
- const pattern=label==="Kaufdatum"?/\bKauf\s*datum\b/i:/\bZiehung\b/i;
+ const pattern=label==="Kaufdatum"?/^\s*Kauf\s*datum\b/i:/^\s*Ziehung\b/i;
  const rows=normalize(raw).split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
  const i=rows.findIndex(row=>pattern.test(row));
  if(i<0)return null;
