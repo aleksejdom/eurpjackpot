@@ -97,3 +97,72 @@ Der manuelle Zahlenfilter ist getrennt für Hauptzahlen 1–50 und Eurozahlen 1�
 Historische Auswertungen enthalten die häufigsten Haupt- und Eurozahlen, 2er- und 3er-Kombinationen von Hauptzahlen, Nachbarzahl-Häufigkeit, Wiederholungen und Zahlensummen. Die historischen Werte werden **deutlich getrennt** von der unveränderlichen theoretischen Gewinnchance gezeigt. Statistik-Muster sind keine Prognose.
 
 Die Codeänderungen werden durch `npm run test` sowie das GitHub-Actions-Workflow `Verify Eurojackpot app` auf jedem Push nach `main` überprüft. Ein GitHub-Actions-Erfolg muss nach dem Push geprüft werden, bevor eine erfolgreiche Produktions-Buildprüfung behauptet wird.
+
+
+## Benutzerbezogene Spielscheine (Better Auth)
+
+**Wichtig:** Seit der Einführung der Benutzertrennung erhält jeder neu angelegte
+Spielschein automatisch die Better-Auth-ID des angemeldeten Nutzers
+(`ej_tickets.owner_user_id`). `GET /api/games`, Erstellen, Ändern, Löschen
+und Auszahlungen verwenden diese ID **serverseitig**, nicht aus dem Request.
+Untertabellen `ej_ticket_lines`, `ej_ticket_dates` und `ej_payouts`
+bleiben über `ticket_id` referenziert und sind nur über zugeordnete,
+berechtigte Scheine erreichbar. Ausgaben und persönliche Zahlenstatistiken
+werden ausschließlich aus den Scheinen des eigenen Kontos berechnet.
+
+Die Tabelle ist für alle Accounts gemeinsam, aber sämtliche eigenen Zeilen
+sind durch `owner_user_id` getrennt. Es werden **keine persönlichen Daten
+zwischen Accounts ausgetauscht**. Die öffentlichen Eurojackpot-Ziehungen und
+Gewinnquoten sind als gemeinsame, nicht-personenbezogene Daten weiterhin geteilt.
+
+### Upgrade vorhandener Installationen
+
+Die App führt bei der ersten Spielschein-API-Anfrage folgende rückwärtskompatible
+Schemaänderung aus:
+
+```sql
+ALTER TABLE ej_tickets ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
+CREATE INDEX IF NOT EXISTS ej_tickets_owner_idx
+  ON ej_tickets(owner_user_id, purchased_on DESC, id DESC);
+```
+
+**Alte Spielscheine haben zunächst `owner_user_id IS NULL` und sind somit
+für sämtliche Benutzer unsichtbar.** Sie werden nicht gelöscht, aber
+aus Datenschutzgründen **nicht automatisch** dem ersten Benutzer zugeteilt.
+Insbesondere bei bereits mehreren registrierten Konten wäre diese Zuordnung
+unsicher. Ein Administrator muss nach Sicherung der Daten jeden vorhandenen
+Schein anhand der bisherigen Datensätze dem richtigen Better-Auth-Konto zuordnen.
+
+In einem gesicherten PostgreSQL-Verwaltungszugang:
+
+```sql
+-- Eigentümer anhand der bestehenden Better-Auth-Konten identifizieren:
+SELECT id, email FROM "user";
+
+-- Nur alte, nicht zugeordnete Daten anzeigen:
+SELECT id, purchased_on, total_cents, note
+FROM ej_tickets WHERE owner_user_id IS NULL ORDER BY id;
+
+-- Nach manueller Prüfung die ausdrücklich freigegebenen IDs zuweisen:
+BEGIN;
+UPDATE ej_tickets
+SET owner_user_id = 'HIER_DIE_BESTAETIGTE_USER_ID'
+WHERE id IN (123, 456) AND owner_user_id IS NULL;
+-- Prüfen, ob die tatsächliche Anzahl zu den ausgewählten Datensätzen passt.
+COMMIT;
+```
+
+Die Zahlen **123, 456** sind ausschließlich Beispiele. Vorher ein Backup
+erstellen und keine pauschale Änderung aller NULL-Zeilen durchführen,
+solange die Eigentumsverhältnisse nicht geklärt sind.
+
+### Mehrstufige digitale Spielschein-Erkennung
+
+Digitale Screenshots werden aus dem Originalbild, einer kontrastverbesserten
+Version und aus **geometrisch getrennten Spielfeld-Bereichen** analysiert.
+Tesseract TSV liefert die Position der Feldüberschriften und Zahlenzeilen;
+jedes Spielfeld bleibt über seine Nummer zugeordnet. Wiederholte ganze
+Zahlenreihen in mehreren Feldern werden als verdächtig erkannt und nicht
+automatisch in jedes Feld übernommen. Bei fehlender Übereinstimmung bleibt
+die Zahl leer und muss vor dem Speichern anhand des Originalbilds
+kontrolliert werden. **Der Scan ist niemals eine amtliche Gewinnprüfung.**

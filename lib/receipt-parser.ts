@@ -320,3 +320,116 @@ export function parseDigitalNumbersFromText(raw:string):{main:string;euro:string
  if(numeric.length===2)return digitalNumbers(numeric.join(" "));
  return null;
 }
+
+
+/** Separate fields strictly by their physical location on the screenshot.
+ * Never use a "nearest" number row from another field to fill a missing row.
+ */
+export function spatialDigitalLinesFromTsv(tsv:string):ReceiptLine[]{
+ const raw=tsv.trim().split(/\r?\n/);
+ const names=raw[0]?.split("\t")||[];
+ const key=(name:string)=>names.indexOf(name);
+ if(!["level","page_num","block_num","par_num","line_num","left","top","width","height","text"].every(n=>key(n)>=0))return [];
+ type Word={text:string;top:number;bottom:number;left:number};
+ const lines=new Map<string,Word[]>();
+ for(const row of raw.slice(1)){
+  const fields=row.split("\t");if(Number(fields[key("level")])!==5)continue;
+  const text=fields[key("text")]?.trim();
+  const top=Number(fields[key("top")]),left=Number(fields[key("left")]),height=Number(fields[key("height")]);
+  if(!text||![top,left,height].every(Number.isFinite))continue;
+  const lineId=[fields[key("page_num")],fields[key("block_num")],fields[key("par_num")],fields[key("line_num")]].join("/");
+  const group=lines.get(lineId)||[];
+  group.push({text,top,bottom:top+height,left});lines.set(lineId,group);
+ }
+ const groups=[...lines.values()].map(words=>({
+  words:words.sort((a,b)=>a.left-b.left),
+  top:Math.min(...words.map(w=>w.top)),
+  bottom:Math.max(...words.map(w=>w.bottom))
+ })).sort((a,b)=>a.top-b.top);
+ const anchors=groups.flatMap(group=>{
+  const label=group.words.map(w=>w.text).join(" ");
+  const m=label.match(/\bSpiel\s*feld\s*([1-9]|1\d|20)\b/i);
+  return m?[{index:Number(m[1]),top:group.top,bottom:group.bottom}]:[];
+ });
+ const results:ReceiptLine[]=[];
+ for(let i=0;i<anchors.length;i++){
+  const anchor=anchors[i];
+  const next=anchors[i+1]?.top??Infinity;
+  const rows=groups.filter(g=>g.top>=anchor.bottom-2&&g.top<next-2 &&
+    !/\b(?:Spielfeld|Losnummer|Kaufdatum|Ziehung|Preis|Laufzeit)\b/i.test(g.words.map(w=>w.text).join(" ")));
+  const valid=rows.flatMap(g=>{
+   // Numeric word tokens must share one horizontal row and be located
+   // strictly between this field's heading and the next field's heading.
+   const text=g.words.map(w=>w.text).join(" ");
+   const match=parseDigitalNumbersFromText(text);
+   return match?[match]:[];
+  });
+  if(valid.length!==1)continue; // Ambiguous layout -> leave blank.
+  results.push({index:anchor.index,...valid[0],complete:true});
+ }
+ return results;
+}
+
+/** Stronger conflict handling for digital screens: one corrupted OCR pass
+ * must never win by majority over an independently cropped, different row.
+ * Unknown values stay blank, and probable repeated-row OCR is flagged.
+ */
+export function reconcileDigitalFieldScans(scans:ReceiptScan[],spatial:ReceiptLine[]=[]):ReceiptScan{
+ const merged=mergeReceiptScans(scans);
+ const byIndex=new Map<number,ReceiptLine[]>();
+ for(const scan of scans){
+  const duplicates=new Map<string,number>();
+  for(const line of scan.lines){
+   if(!line.complete)continue;
+   const key=line.main+"|"+line.euro;
+   duplicates.set(key,(duplicates.get(key)||0)+1);
+  }
+  for(const line of scan.lines){
+   const group=byIndex.get(line.index)||[];
+   const repeated=line.complete&&(duplicates.get(line.main+"|"+line.euro)||0)>1;
+   if(repeated){
+    group.push({index:line.index,main:"",euro:"",complete:false});
+    merged.warnings.push("Spielfeld "+line.index+": OCR hat dieselbe Reihe mehreren Feldern zugeordnet");
+   }else group.push(line);
+   byIndex.set(line.index,group);
+  }
+ }
+ for(const line of spatial){
+  const group=byIndex.get(line.index)||[];group.push(line);byIndex.set(line.index,group);
+ }
+ const lines:ReceiptLine[]=[];
+ for(const [index,values] of [...byIndex].sort((a,b)=>a[0]-b[0])){
+  const exactSpatial=spatial.find(l=>l.index===index);
+  const choose=(part:"main"|"euro")=>{
+   const candidates=[...new Set(values.map(v=>v[part]).filter(Boolean))];
+   if(!candidates.length)return "";
+   if(candidates.length>1){
+    merged.warnings.push("Spielfeld "+index+": unterschiedliche "+(part==="main"?"Hauptzahlen":"Eurozahlen")+" erkannt – bitte manuell prüfen");
+    return "";
+   }
+   // Spatial words from an isolated field cannot be overridden by unrelated
+   // text lines from the rest of the screenshot.
+   if(exactSpatial?.[part]&&candidates[0]!==exactSpatial[part])return "";
+   return candidates[0];
+  };
+  const main=choose("main"),euro=choose("euro");
+  lines.push({index,main,euro,complete:!!main&&!!euro});
+ }
+ // When an OCR engine assigns exactly the same seven-number row to multiple
+ // independently labeled fields, do not silently treat these as real tips.
+ const duplicates=new Map<string,number[]>();
+ for(const line of lines){
+  if(!line.complete)continue;
+  const key=line.main+" | "+line.euro;
+  const group=duplicates.get(key)||[];group.push(line.index);duplicates.set(key,group);
+ }
+ for(const group of duplicates.values()){
+  if(group.length<2)continue;
+  // Two legitimate tickets can have equal rows; require confirmation instead
+  // of assuming the duplicated output must be real.
+  for(const line of lines)if(group.includes(line.index)){line.main="";line.euro="";line.complete=false;}
+  merged.warnings.push("Identische OCR-Zahlen in Spielfeld "+group.join(", ")+": Zahlen bitte einzeln kontrollieren");
+ }
+ merged.lines=lines;
+ return merged;
+}

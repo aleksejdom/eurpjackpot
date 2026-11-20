@@ -1,6 +1,6 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
-import { parseEurojackpotReceipt, parseDigitalEurojackpotScreenshot, isDigitalEurojackpotScreenshot, digitalFieldRegionsFromTsv, parseDigitalNumbersFromText, mergeReceiptScans } from "@/lib/receipt-parser";
+import { parseEurojackpotReceipt, parseDigitalEurojackpotScreenshot, isDigitalEurojackpotScreenshot, digitalFieldRegionsFromTsv, spatialDigitalLinesFromTsv, parseDigitalNumbersFromText, reconcileDigitalFieldScans, mergeReceiptScans } from "@/lib/receipt-parser";
 import { prepareReceiptImage, receiptGameRegion, digitalTicketNumberRegion, prepareDigitalScreenshot, cropOcrRegion } from "@/lib/receipt-image";
 import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, Save, Coins, CalendarDays, Pencil, X } from "lucide-react";
 type Line={main_numbers:number[];euro_numbers:number[]};
@@ -92,8 +92,10 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
     const digital=isDigitalEurojackpotScreenshot(initial.data.text)||
       (preferred==="screenshot"&&!/SPIEL\s*QUITTUNG|5\s*\/\s*50/i.test(initial.data.text));
     const results:ReturnType<typeof parseEurojackpotReceipt>[]=[];
+    let spatial:ReturnType<typeof spatialDigitalLinesFromTsv>=[];
     if(digital){
       results.push(parseDigitalEurojackpotScreenshot(initial.data.text));
+      spatial=typeof initial.data.tsv==="string"?spatialDigitalLinesFromTsv(initial.data.tsv):[];
       setScanProgress("Digitale Spielauftrag-Zahlen werden genauer gelesen …");
       const enhanced=await prepareDigitalScreenshot(file);
       const enhancedResult=await worker.recognize(enhanced);
@@ -138,11 +140,22 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
         results.push(parseEurojackpotReceipt(third.data.text));
       }
     }
-    const extracted=mergeReceiptScans(results);
+    const extracted=digital?reconcileDigitalFieldScans(results,spatial):mergeReceiptScans(results);
     // Keep numeric field order: the UI has no separate field-index metadata.
     const ordered=[...extracted.lines].sort((a,b)=>a.index-b.index);
-    setScanWarnings(extracted.warnings);
-    setLines(ordered.length?ordered.map(l=>({main:l.main,euro:l.euro})):[emptyLine()]);
+    // Preserve field identity if an individual OCR field was unreadable:
+    // never shift "Spielfeld 4" into the "Spielfeld 3" editor position.
+    const maxIndex=ordered.length?Math.max(...ordered.map(l=>l.index)):0;
+    const byIndex=new Map(ordered.map(l=>[l.index,l]));
+    const normalizedLines=maxIndex
+      ?Array.from({length:Math.min(maxIndex,20)},(_,i)=>{
+        const field=byIndex.get(i+1);
+        return field?{main:field.main,euro:field.euro}:emptyLine();
+       })
+      :[emptyLine()];
+    const missing=normalizedLines.filter(l=>!l.main||!l.euro).length;
+    setScanWarnings([...extracted.warnings,...(missing?[missing+" Spielfeld(er) müssen manuell geprüft werden"]:[])]);
+    setLines(normalizedLines);
     setPurchase(extracted.purchaseDate||"");
     setDates(extracted.drawDates);
     setAmount(extracted.amount||"");

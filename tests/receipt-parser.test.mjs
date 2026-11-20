@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseEurojackpotReceipt,parseDigitalEurojackpotScreenshot,isDigitalEurojackpotScreenshot,digitalFieldRegionsFromTsv,parseDigitalNumbersFromText,mergeReceiptScans} from "../lib/receipt-parser.ts";
+import {parseEurojackpotReceipt,parseDigitalEurojackpotScreenshot,isDigitalEurojackpotScreenshot,digitalFieldRegionsFromTsv,spatialDigitalLinesFromTsv,reconcileDigitalFieldScans,parseDigitalNumbersFromText,mergeReceiptScans} from "../lib/receipt-parser.ts";
 const sample=`SPIELQUITTUNG
 14.11.26 19:45:43
 EURO JACKPOT
@@ -168,4 +168,54 @@ test("isolated OCR game rows reject incomplete and duplicate numbers",()=>{
  assert.deepEqual(parseDigitalNumbersFromText("3 4 21 34 37\n9 10"),{main:"3 4 21 34 37",euro:"9 10"});
  assert.equal(parseDigitalNumbersFromText("3 4 21 34 37 9"),null);
  assert.equal(parseDigitalNumbersFromText("3 4 21 34 37 9 9"),null);
+});
+
+
+test("each Spielfeld is linked to its own TSV number row, not the first row",()=>{
+ const header="level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext";
+ const lines=[header,[1,1,0,0,0,0,0,0,1179,1872,0,""].join("\t")];
+ const put=(block,lineNum,word,left,top,text)=>lines.push([5,1,block,1,lineNum,word,left,top,40,28,90,text].join("\t"));
+ for(const [i,values] of [
+  [3,4,21,34,37,9,10],
+  [14,24,39,41,42,7,8],
+  [17,21,32,38,39,7,9],
+  [1,4,33,44,45,1,10]
+ ].entries()){
+  const block=i+1;
+  put(block,1,1,60,280+i*225,"Spielfeld");
+  put(block,1,2,250,280+i*225,String(block));
+  values.forEach((n,j)=>put(block,2,j+1,78+j*70,345+i*225,String(n)));
+ }
+ put(5,1,1,70,1300,"Losnummer");
+ const spatial=spatialDigitalLinesFromTsv(lines.join("\n"));
+ assert.deepEqual(spatial.map(x=>x.index),[1,2,3,4]);
+ assert.deepEqual(spatial.map(x=>x.main),["3 4 21 34 37","14 24 39 41 42","17 21 32 38 39","1 4 33 44 45"]);
+ assert.deepEqual(spatial.map(x=>x.euro),["9 10","7 8","7 9","1 10"]);
+});
+test("global OCR repeating numbers never overwrites independently verified fields",()=>{
+ const repeated=parseDigitalEurojackpotScreenshot([
+  "Mein Spielauftrag","Spielfeld 1","3 4 21 34 37 9 10",
+  "Spielfeld 2","3 4 21 34 37 9 10",
+  "Spielfeld 3","3 4 21 34 37 9 10",
+  "Spielfeld 4","3 4 21 34 37 9 10"
+ ].join("\n"));
+ const independent=[
+  {index:1,main:"3 4 21 34 37",euro:"9 10",complete:true},
+  {index:2,main:"14 24 39 41 42",euro:"7 8",complete:true},
+  {index:3,main:"17 21 32 38 39",euro:"7 9",complete:true},
+  {index:4,main:"1 4 33 44 45",euro:"1 10",complete:true}
+ ];
+ const result=reconcileDigitalFieldScans([repeated],independent);
+ assert.deepEqual(result.lines.map(l=>l.main),independent.map(l=>l.main));
+ assert.deepEqual(result.lines.map(l=>l.euro),independent.map(l=>l.euro));
+});
+test("unverified duplicated OCR rows remain blank rather than copied to every field",()=>{
+ const repeated=parseDigitalEurojackpotScreenshot([
+  "Mein Spielauftrag","Spielfeld 1","3 4 21 34 37 9 10",
+  "Spielfeld 2","3 4 21 34 37 9 10"
+ ].join("\n"));
+ const result=reconcileDigitalFieldScans([repeated]);
+ assert.equal(result.lines.length,2);
+ assert(result.lines.every(line=>!line.complete&&!line.main&&!line.euro));
+ assert(result.warnings.some(message=>message.includes("dieselbe Reihe")));
 });

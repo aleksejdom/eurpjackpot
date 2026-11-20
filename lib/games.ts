@@ -15,6 +15,7 @@ async function ready() {
     await database().query(`
       CREATE TABLE IF NOT EXISTS ej_tickets(
         id BIGSERIAL PRIMARY KEY,
+        owner_user_id TEXT NOT NULL,
         purchased_on DATE NOT NULL,
         total_cents INTEGER NOT NULL CHECK(total_cents >= 0),
         note TEXT NOT NULL DEFAULT '',
@@ -40,6 +41,9 @@ async function ready() {
         FOREIGN KEY(ticket_id,draw_date) REFERENCES ej_ticket_dates(ticket_id,draw_date) ON DELETE CASCADE
       );
     `);
+    // Historical tickets intentionally remain unassigned and invisible.
+    await database().query("ALTER TABLE ej_tickets ADD COLUMN IF NOT EXISTS owner_user_id TEXT");
+    await database().query("CREATE INDEX IF NOT EXISTS ej_tickets_owner_idx ON ej_tickets(owner_user_id, purchased_on DESC, id DESC)");
   })().catch(e=>{initialized=undefined;throw e;});
   await initialized;
 }
@@ -64,13 +68,14 @@ export function validateTicket(input:unknown):TicketInput {
   }
   return {purchased_on:t.purchased_on,total_cents:t.total_cents!,note:t.note!,dates:[...t.dates].sort(),lines:t.lines.map(l=>({main_numbers:l.main_numbers,euro_numbers:l.euro_numbers}))};
 }
-export async function createTicket(input:unknown):Promise<string>{
+export async function createTicket(userId:string,input:unknown):Promise<string>{
+  if(!userId)throw new Error("Nicht angemeldet");
   const t=validateTicket(input);
   await ready();
   const client:PoolClient=await database().connect();
   try{
     await client.query("BEGIN");
-    const row=await client.query<{id:string}>("INSERT INTO ej_tickets(purchased_on,total_cents,note) VALUES($1::date,$2,$3) RETURNING id::text AS id",[t.purchased_on,t.total_cents,t.note]);
+    const row=await client.query<{id:string}>("INSERT INTO ej_tickets(owner_user_id,purchased_on,total_cents,note) VALUES($1,$2::date,$3,$4) RETURNING id::text AS id",[userId,t.purchased_on,t.total_cents,t.note]);
     const id=row.rows[0].id;
     for(let i=0;i<t.lines.length;i++) await client.query("INSERT INTO ej_ticket_lines(ticket_id,position,main_numbers,euro_numbers) VALUES($1,$2,$3::integer[],$4::integer[])",[id,i+1,t.lines[i].main_numbers,t.lines[i].euro_numbers]);
     for(const date of t.dates) await client.query("INSERT INTO ej_ticket_dates(ticket_id,draw_date) VALUES($1,$2::date)",[id,date]);
@@ -79,16 +84,17 @@ export async function createTicket(input:unknown):Promise<string>{
   }catch(e){await client.query("ROLLBACK");throw e;}finally{client.release();}
 }
 /** Update an existing ticket atomically; keep payouts for dates that remain selected. */
-export async function updateTicket(id:string,input:unknown):Promise<void>{
-  if(!/^\\d{1,18}$/.test(id))throw new Error("Ungültige Schein-ID");
+export async function updateTicket(userId:string,id:string,input:unknown):Promise<void>{
+  if(!userId)throw new Error("Nicht angemeldet");
+  if(!/^\d{1,18}$/.test(id))throw new Error("Ungültige Schein-ID");
   const ticket=validateTicket(input);
   await ready();
   const client:PoolClient=await database().connect();
   try{
     await client.query("BEGIN");
     const row=await client.query(
-      "UPDATE ej_tickets SET purchased_on=$2::date,total_cents=$3,note=$4 WHERE id=$1::bigint RETURNING id",
-      [id,ticket.purchased_on,ticket.total_cents,ticket.note]
+      "UPDATE ej_tickets SET purchased_on=$2::date,total_cents=$3,note=$4 WHERE id=$1::bigint AND owner_user_id=$5 RETURNING id",
+      [id,ticket.purchased_on,ticket.total_cents,ticket.note,userId]
     );
     if(!row.rowCount)throw new Error("Spielschein nicht gefunden");
     // First remove dates that are no longer selected (their payouts cascade),
@@ -117,7 +123,8 @@ export async function updateTicket(id:string,input:unknown):Promise<void>{
   }finally{client.release();}
 }
 
-export async function listTickets():Promise<Ticket[]> {
+export async function listTickets(userId:string):Promise<Ticket[]> {
+  if(!userId)throw new Error("Nicht angemeldet");
   await ready();
   const result=await database().query<{
     id:string;purchased_on:string;total_cents:number;note:string;created_at:string;dates:string[];
@@ -127,19 +134,23 @@ export async function listTickets():Promise<Ticket[]> {
     COALESCE((SELECT array_agg(to_char(d.draw_date,'YYYY-MM-DD') ORDER BY d.draw_date) FROM ej_ticket_dates d WHERE d.ticket_id=t.id),ARRAY[]::text[]) AS dates,
     COALESCE((SELECT json_agg(json_build_object('main_numbers',l.main_numbers,'euro_numbers',l.euro_numbers) ORDER BY l.position) FROM ej_ticket_lines l WHERE l.ticket_id=t.id),'[]'::json) AS lines,
     COALESCE((SELECT json_agg(json_build_object('date',to_char(p.draw_date,'YYYY-MM-DD'),'amount_cents',p.amount_cents)) FROM ej_payouts p WHERE p.ticket_id=t.id),'[]'::json) AS payouts
-    FROM ej_tickets t ORDER BY t.purchased_on DESC,t.id DESC`);
+    FROM ej_tickets t WHERE t.owner_user_id=$1 ORDER BY t.purchased_on DESC,t.id DESC`,[userId]);
   return result.rows;
 }
-export async function deleteTicket(id:string):Promise<void>{
+export async function deleteTicket(userId:string,id:string):Promise<void>{
+  if(!userId)throw new Error("Nicht angemeldet");
   await ready();
-  const result=await database().query("DELETE FROM ej_tickets WHERE id=$1::bigint",[id]);
+  const result=await database().query("DELETE FROM ej_tickets WHERE id=$1::bigint AND owner_user_id=$2",[id,userId]);
   if(!result.rowCount) throw new Error("Schein nicht gefunden");
 }
-export async function setPayout(id:string,date:string,cents:number):Promise<void>{
+export async function setPayout(userId:string,id:string,date:string,cents:number):Promise<void>{
+  if(!userId)throw new Error("Nicht angemeldet");
   if(!isoDate(date)||!Number.isSafeInteger(cents)||cents<0||cents>100000000) throw new Error("Auszahlung oder Datum ungültig");
   await ready();
   const result=await database().query(`INSERT INTO ej_payouts(ticket_id,draw_date,amount_cents)
-    SELECT ticket_id,draw_date,$3 FROM ej_ticket_dates WHERE ticket_id=$1::bigint AND draw_date=$2::date
-    ON CONFLICT(ticket_id,draw_date) DO UPDATE SET amount_cents=EXCLUDED.amount_cents`,[id,date,cents]);
+    SELECT d.ticket_id,d.draw_date,$3 FROM ej_ticket_dates d
+    JOIN ej_tickets t ON t.id=d.ticket_id
+    WHERE d.ticket_id=$1::bigint AND d.draw_date=$2::date AND t.owner_user_id=$4
+    ON CONFLICT(ticket_id,draw_date) DO UPDATE SET amount_cents=EXCLUDED.amount_cents`,[id,date,cents,userId]);
   if(!result.rowCount) throw new Error("Ziehung für diesen Schein nicht gefunden");
 }
