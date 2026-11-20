@@ -104,3 +104,51 @@ export async function digitalTicketNumberRegion(image:Blob):Promise<Blob>{
   return await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b||image),"image/png"));
  }finally{bitmap.close();}
 }
+
+
+export type OcrImageRegion={left:number;top:number;width:number;height:number};
+
+/** Preserve the source image and only improve local contrast. The receipt
+ * yellow-border crop must NEVER be used for clean digital screenshots. */
+export async function prepareDigitalScreenshot(file:File):Promise<Blob>{
+ return renderOcrRegion(file,null,true,1800);
+}
+
+/** Crop the exact TSV-detected Spielfeld region. Upscaling is useful because
+ * small ball numerals are often only 12-20 native pixels tall. */
+export async function cropOcrRegion(image:Blob,region:OcrImageRegion):Promise<Blob>{
+ return renderOcrRegion(image,region,true,1350);
+}
+async function renderOcrRegion(image:Blob,region:OcrImageRegion|null,contrast:boolean,targetWidth:number):Promise<Blob>{
+ if(typeof document==="undefined")return image;
+ let bitmap:ImageBitmap;
+ try{bitmap=await createImageBitmap(image);}catch{return image;}
+ try{
+  const x=region?Math.max(0,Math.floor(region.left)):0;
+  const y=region?Math.max(0,Math.floor(region.top)):0;
+  const w=region?Math.min(bitmap.width-x,Math.ceil(region.width)):bitmap.width;
+  const h=region?Math.min(bitmap.height-y,Math.ceil(region.height)):bitmap.height;
+  if(w<10||h<10)return image;
+  let scale=Math.max(1,Math.min(2.7,targetWidth/w));
+  if(w*h*scale*scale>8_000_000)scale=Math.sqrt(8_000_000/(w*h));
+  const canvas=document.createElement("canvas");
+  canvas.width=Math.max(1,Math.round(w*scale));
+  canvas.height=Math.max(1,Math.round(h*scale));
+  const ctx=canvas.getContext("2d",{willReadFrequently:contrast});
+  if(!ctx)return image;
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(bitmap,x,y,w,h,0,0,canvas.width,canvas.height);
+  if(contrast){
+   const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+   const data=pixels.data;
+   for(let i=0;i<data.length;i+=4){
+    const v=Math.round(.299*data[i]+.587*data[i+1]+.114*data[i+2]);
+    // Preserve fine strokes from screenshot fonts, moderate contrast only.
+    const result=Math.min(255,Math.max(0,(v-128)*1.38+127));
+    data[i]=data[i+1]=data[i+2]=result;
+   }
+   ctx.putImageData(pixels,0,0);
+  }
+  return await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b||image),"image/png"));
+ }finally{bitmap.close();}
+}

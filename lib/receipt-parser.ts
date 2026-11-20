@@ -194,7 +194,10 @@ export function parseDigitalEurojackpotScreenshot(raw:string):ReceiptScan{
    if(onlyDigits.length===2)value=digitalNumbers(onlyDigits.join(" "));
   }
   if(value)fields.set(current,value);
-  else result.warnings.push("Spielfeld "+current+": 5 Haupt- und 2 Eurozahlen nicht eindeutig erkannt");
+  else {
+   fields.set(current,{main:"",euro:""});
+   result.warnings.push("Spielfeld "+current+": 5 Haupt- und 2 Eurozahlen nicht eindeutig erkannt");
+  }
  }
  for(const row of rows){
   const next=digitalFieldLine(row);
@@ -211,7 +214,7 @@ export function parseDigitalEurojackpotScreenshot(raw:string):ReceiptScan{
   if(buffer.length<6)buffer.push(row);
  }
  finish();
- result.lines=[...fields].sort((a,b)=>a[0]-b[0]).map(([index,v])=>({index,...v,complete:true}));
+ result.lines=[...fields].sort((a,b)=>a[0]-b[0]).map(([index,v])=>({index,...v,complete:!!v.main&&!!v.euro}));
  // The purchase date can match the draw date, but they have separate labels.
  result.purchaseDate=labeledDate(raw,"Kaufdatum");
  const draw=labeledDate(raw,"Ziehung");
@@ -235,4 +238,85 @@ export function parseDigitalEurojackpotScreenshot(raw:string):ReceiptScan{
  if(!result.drawDates.length)result.warnings.push("Ziehungsdatum prüfen");
  if(!result.amount)result.warnings.push("Preis prüfen");
  return result;
+}
+
+
+/** OCR text is often returned in a different order from the on-screen fields.
+ * The TSV word coordinates let us identify rectangular areas beneath each
+ * "Spielfeld N" heading and OCR the number row independently.
+ */
+export type OcrFieldRegion={index:number;left:number;top:number;width:number;height:number};
+export function digitalFieldRegionsFromTsv(tsv:string):OcrFieldRegion[]{
+ const raw=tsv.trim().split(/\r?\n/);
+ if(!raw.length)return [];
+ const keys=raw[0].split("\t");
+ const get=(row:string[],name:string)=>row[keys.indexOf(name)];
+ if(!["level","block_num","par_num","line_num","left","top","width","height","text"].every(k=>keys.includes(k)))return [];
+ type Word={text:string;left:number;top:number;width:number;height:number};
+ const lines=new Map<string,Word[]>();
+ let pageWidth=0,pageHeight=0;
+ for(const row of raw.slice(1)){
+  const p=row.split("\t");
+  const level=Number(get(p,"level"));
+  if(level===1){
+   pageWidth=Math.max(pageWidth,Number(get(p,"width")));
+   pageHeight=Math.max(pageHeight,Number(get(p,"height")));
+  }
+  if(level!==5)continue;
+  const text=get(p,"text")?.trim();
+  if(!text)continue;
+  const left=Number(get(p,"left")),top=Number(get(p,"top"));
+  const width=Number(get(p,"width")),height=Number(get(p,"height"));
+  if(![left,top,width,height].every(Number.isFinite))continue;
+  const key=[get(p,"page_num"),get(p,"block_num"),get(p,"par_num"),get(p,"line_num")].join("/");
+  const group=lines.get(key)||[];
+  group.push({text,left,top,width,height});
+  lines.set(key,group);
+  pageWidth=Math.max(pageWidth,left+width);
+  pageHeight=Math.max(pageHeight,top+height);
+ }
+ const anchors:{index:number;top:number;bottom:number}[]=[];
+ for(const words of lines.values()){
+  words.sort((a,b)=>a.left-b.left);
+  const line=words.map(w=>w.text).join(" ");
+  const match=line.match(/\bSpiel\s*feld\s*([1-9]|1\d|20)\b/i);
+  if(!match)continue;
+  anchors.push({index:Number(match[1]),top:Math.min(...words.map(w=>w.top)),
+   bottom:Math.max(...words.map(w=>w.top+w.height))});
+ }
+ anchors.sort((a,b)=>a.top-b.top);
+ const regions:OcrFieldRegion[]=[];
+ for(let i=0;i<anchors.length;i++){
+  const anchor=anchors[i];
+  if(regions.some(r=>r.index===anchor.index))continue;
+  // Leave only the content between the anchor and the following anchor.
+  // The last field ends before "Losnummer" / metadata, if recognized.
+  let bottom=i+1<anchors.length?anchors[i+1].top:Math.min(pageHeight,anchor.bottom+Math.round(pageHeight*.16));
+  for(const words of lines.values()){
+   const combined=words.map(w=>w.text).join(" ");
+   if(/\b(?:Losnummer|Kaufdatum|Ziehung|Preis|Laufzeit)\b/i.test(combined)){
+    const y=Math.min(...words.map(w=>w.top));
+    if(y>anchor.bottom)bottom=Math.min(bottom,y);
+   }
+  }
+  const top=Math.max(0,anchor.bottom-5);
+  if(bottom-top<15)continue;
+  regions.push({index:anchor.index,left:Math.max(0,Math.round(pageWidth*.035)),top,
+   width:Math.round(pageWidth*.93),height:Math.round(bottom-top)});
+ }
+ return regions;
+}
+
+/** A single seven-number OCR row can include punctuation or an OCR reading
+ * "O" as zero. Zero is invalid for Eurojackpot, so such OCR remains untrusted.
+ */
+export function parseDigitalNumbersFromText(raw:string):{main:string;euro:string}|null{
+ const rows=normalize(raw).split(/\r?\n/).map(l=>l.replace(/\bEuro\s*zahlen\b/gi,"").trim()).filter(Boolean);
+ for(const row of rows){
+  const value=digitalNumbers(row);
+  if(value)return value;
+ }
+ const numeric=rows.filter(line=>/^[\d\s,;.+|•·()-]+$/.test(line));
+ if(numeric.length===2)return digitalNumbers(numeric.join(" "));
+ return null;
 }

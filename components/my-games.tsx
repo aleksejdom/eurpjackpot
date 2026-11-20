@@ -1,7 +1,7 @@
 "use client";
 import { useEffect,useMemo,useState } from "react";
-import { parseEurojackpotReceipt, parseDigitalEurojackpotScreenshot, isDigitalEurojackpotScreenshot, mergeReceiptScans } from "@/lib/receipt-parser";
-import { prepareReceiptImage, receiptGameRegion, digitalTicketNumberRegion } from "@/lib/receipt-image";
+import { parseEurojackpotReceipt, parseDigitalEurojackpotScreenshot, isDigitalEurojackpotScreenshot, digitalFieldRegionsFromTsv, parseDigitalNumbersFromText, mergeReceiptScans } from "@/lib/receipt-parser";
+import { prepareReceiptImage, receiptGameRegion, digitalTicketNumberRegion, prepareDigitalScreenshot, cropOcrRegion } from "@/lib/receipt-image";
 import { Camera, Check, ChevronDown, ChevronUp, Plus, Trash2, Save, Coins, CalendarDays, Pencil, X } from "lucide-react";
 type Line={main_numbers:number[];euro_numbers:number[]};
 type Ticket={id:string;purchased_on:string;total_cents:number;note:string;created_at:string;dates:string[];lines:Line[];payouts:{date:string;amount_cents:number}[]};
@@ -86,35 +86,53 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
     worker=await tesseract.createWorker("eng",1,{logger:m=>{
       if(m.status==="recognizing text")setScanProgress("Texterkennung: "+Math.round((m.progress||0)*100)+" %");
     }});
-    // Original first: screenshots have crisp UI text that preprocessing may damage.
-    const initial=await worker.recognize(file);
+    // Tesseract v6 only returns text by default. Request TSV explicitly so
+    // bounding boxes can be used to isolate each individual Spielfeld.
+    const initial=await worker.recognize(file,{}, {tsv:true});
     const digital=isDigitalEurojackpotScreenshot(initial.data.text)||
       (preferred==="screenshot"&&!/SPIEL\s*QUITTUNG|5\s*\/\s*50/i.test(initial.data.text));
     const results:ReturnType<typeof parseEurojackpotReceipt>[]=[];
     if(digital){
       results.push(parseDigitalEurojackpotScreenshot(initial.data.text));
-      setScanProgress("Spielfelder und Eurozahlen werden aus dem Screenshot gelesen …");
-      const region=await digitalTicketNumberRegion(file);
-      const second=await worker.recognize(region);
-      results.push(parseDigitalEurojackpotScreenshot(second.data.text));
-      if(results.every(r=>r.lines.length===0||r.lines.some(l=>!l.complete))){
-        setScanProgress("Screenshot wird mit stärkerem Kontrast geprüft …");
-        const prepared=await prepareReceiptImage(file);
-        const third=await worker.recognize(prepared);
-        results.push(parseDigitalEurojackpotScreenshot(third.data.text));
+      setScanProgress("Digitale Spielauftrag-Zahlen werden genauer gelesen …");
+      const enhanced=await prepareDigitalScreenshot(file);
+      const enhancedResult=await worker.recognize(enhanced);
+      results.push(parseDigitalEurojackpotScreenshot(enhancedResult.data.text));
+      // TSV box coordinates are relative to the original image. Re-OCR
+      // selected field regions at 1.0–2.7x size, not the entire screenshot.
+      const regions=typeof initial.data.tsv==="string"
+        ?digitalFieldRegionsFromTsv(initial.data.tsv):[];
+      if(regions.length){
+        await worker.setParameters({tessedit_pageseg_mode:tesseract.PSM.SINGLE_BLOCK});
+        for(const [i,region] of regions.slice(0,20).entries()){
+          setScanProgress("Spielfeld "+(i+1)+" von "+Math.min(regions.length,20)+" wird geprüft …");
+          const cropped=await cropOcrRegion(file,region);
+          const focused=await worker.recognize(cropped);
+          const nums=parseDigitalNumbersFromText(focused.data.text);
+          if(nums){
+            results.push(parseDigitalEurojackpotScreenshot(
+              "Mein Spielauftrag\nSpielfeld "+region.index+"\n"+
+              nums.main+" "+nums.euro
+            ));
+          }
+        }
+        await worker.setParameters({tessedit_pageseg_mode:tesseract.PSM.AUTO});
+      }else if(results.every(r=>r.lines.length===0||r.lines.some(l=>!l.complete))){
+        // Layout may not expose heading coordinates; preserve older fallback.
+        const region=await digitalTicketNumberRegion(file);
+        const retry=await worker.recognize(region);
+        results.push(parseDigitalEurojackpotScreenshot(retry.data.text));
       }
     }else{
       results.push(parseEurojackpotReceipt(initial.data.text));
-      const needsMore=results[0].lines.length===0||results[0].lines.some(l=>!l.complete)||
-        !results[0].amount||!results[0].purchaseDate||!results[0].drawDates.length;
+      // Compare original and contrast-corrected printing even when the
+      // original looked complete: digit substitution is common on paper.
+      setScanProgress("Papierquittung wird mit verbessertem Kontrast geprüft …");
       const prepared=await prepareReceiptImage(file);
-      if(needsMore){
-        setScanProgress("Papierquittung wird mit verbessertem Kontrast geprüft …");
-        const second=await worker.recognize(prepared);
-        results.push(parseEurojackpotReceipt(second.data.text));
-      }
+      const second=await worker.recognize(prepared);
+      results.push(parseEurojackpotReceipt(second.data.text));
       if(results.every(r=>r.lines.length===0||r.lines.some(l=>!l.complete))){
-        setScanProgress("Tippfelder werden einzeln geprüft …");
+        setScanProgress("Tippfelder werden separat geprüft …");
         const region=await receiptGameRegion(prepared);
         const third=await worker.recognize(region);
         results.push(parseEurojackpotReceipt(third.data.text));

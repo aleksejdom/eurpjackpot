@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {parseEurojackpotReceipt,parseDigitalEurojackpotScreenshot,isDigitalEurojackpotScreenshot,mergeReceiptScans} from "../lib/receipt-parser.ts";
+import {parseEurojackpotReceipt,parseDigitalEurojackpotScreenshot,isDigitalEurojackpotScreenshot,digitalFieldRegionsFromTsv,parseDigitalNumbersFromText,mergeReceiptScans} from "../lib/receipt-parser.ts";
 const sample=`SPIELQUITTUNG
 14.11.26 19:45:43
 EURO JACKPOT
@@ -131,6 +131,41 @@ Losnummer 8028742
 Kaufdatum 20.11.2026
 Ziehung 20.11.2026
 Preis 9,60 €`);
- assert.equal(s.lines.length,0);
+ assert.equal(s.lines.length,1);
+ assert.equal(s.lines[0].complete,false);
+ assert.equal(s.lines[0].main,"");
  assert(s.warnings.some(w=>w.includes("Spielfeld 1")));
+});
+
+
+test("TSV geometry locates independent Spielfeld regions with no barcode/price contamination",()=>{
+ const header="level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext";
+ const line=(level,block,lineNum,word,left,top,width,height,text)=>
+  [level,1,block,1,lineNum,word,left,top,width,height,92,text].join("\t");
+ const tsv=[header,
+  line(1,0,0,0,0,0,980,1750,""),
+  line(5,1,1,1,60,330,150,33,"Spielfeld"),
+  line(5,1,1,2,220,330,25,33,"1"),
+  line(5,1,2,1,65,410,620,35,"3 4 21 34 37 9 10"),
+  line(5,2,1,1,60,555,150,33,"Spielfeld"),
+  line(5,2,1,2,220,555,25,33,"2"),
+  line(5,3,1,1,60,790,150,33,"Spielfeld"),
+  line(5,3,1,2,220,790,25,33,"3"),
+  line(5,4,1,1,60,1020,150,33,"Spielfeld"),
+  line(5,4,1,2,220,1020,25,33,"4"),
+  line(5,5,1,1,60,1360,140,30,"Kaufdatum"),
+  line(5,6,1,1,60,1470,140,30,"Ziehung")
+ ].join("\n");
+ const regions=digitalFieldRegionsFromTsv(tsv);
+ assert.deepEqual(regions.map(r=>r.index),[1,2,3,4]);
+ assert(regions.every(r=>r.width>500&&r.height>30));
+ assert(regions[0].top>330&&regions[0].top<410);
+ assert(regions[0].top+regions[0].height<=555);
+ assert(regions[3].top+regions[3].height<=1360);
+});
+test("isolated OCR game rows reject incomplete and duplicate numbers",()=>{
+ assert.deepEqual(parseDigitalNumbersFromText("Eurozahlen\n3 4 21 34 37 9 10"),{main:"3 4 21 34 37",euro:"9 10"});
+ assert.deepEqual(parseDigitalNumbersFromText("3 4 21 34 37\n9 10"),{main:"3 4 21 34 37",euro:"9 10"});
+ assert.equal(parseDigitalNumbersFromText("3 4 21 34 37 9"),null);
+ assert.equal(parseDigitalNumbersFromText("3 4 21 34 37 9 9"),null);
 });
