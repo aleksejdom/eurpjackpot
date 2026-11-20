@@ -156,10 +156,10 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
       const reference=initial.data.text.match(/\bLosnummer\s*[:.]?\s*(\d{5,12})\b/i)?.[1];
       if(reference)setNote("Losnummer "+reference);
     }
+    const complete=normalizedLines.filter(l=>parseNumbers(l.main,5,50)&&parseNumbers(l.euro,2,12)).length;
     setMessage(ordered.length
-      ?(digital?"Digitaler Spielauftrag":"Lotto-Quittung")+" erkannt: "+ordered.length+
-       " Tippfelder. Bitte alle Zahlen, Eurozahlen, Ziehung, Kaufdatum und Preis vor dem Speichern überprüfen."
-      :"Keine eindeutigen Tippfelder erkannt. Du kannst die Werte manuell eintragen oder eine schärfere Aufnahme verwenden.");
+      ?(digital?"Digitaler Spielauftrag":"Lotto-Quittung")+": "+normalizedLines.length+" Felder gefunden, "+complete+" vollständig erkannt. "+(complete<normalizedLines.length?"Leere Eingaben sind NICHT ERKANNT und müssen manuell geprüft oder ergänzt werden. ":"")+"Bitte Kaufdatum, Ziehung und Preis prüfen."
+      :"Keine Zahlen erkannt. Bitte die Werte manuell eintragen oder einen anderen Screenshot verwenden.");
     setShowForm(true);
   }catch(e){
     console.error("Ticket OCR failed",e);
@@ -270,7 +270,8 @@ export default function MyGames({draws,mode="list",editId}:{draws:Draw[];mode?:"
    {receiptPreview&&<details className="scan-preview" open><summary>Originalquittung zum Zahlenvergleich anzeigen</summary><img src={receiptPreview} alt="Originalaufnahme zur Kontrolle der automatisch erkannten Daten"/></details>}
    <div className="games-form-grid"><label className="field">Kaufdatum<input type="date" value={purchase} onChange={e=>setPurchase(e.target.value)}/></label><label className="field">Gesamtpreis in € (inkl. Gebühren)<input type="text" inputMode="decimal" placeholder="z. B. 12,50" value={amount} onChange={e=>setAmount(e.target.value)}/></label></div>
    <div className="games-subtitle"><h3>Tippfelder</h3><span>5 Hauptzahlen + 2 Eurozahlen je Feld</span></div>
-   {lines.map((line,i)=><div className="line-editor" key={i}><span className="line-index">{i+1}</span><label className="field">Hauptzahlen<input value={line.main} placeholder="5 12 23 34 48" onChange={e=>updateLine(i,"main",e.target.value)}/></label><label className="field euro-input">Eurozahlen<input value={line.euro} placeholder="2 9" onChange={e=>updateLine(i,"euro",e.target.value)}/></label><button aria-label={"Tippfeld "+(i+1)+" entfernen"} className="small-btn" disabled={lines.length===1} onClick={()=>setLines(v=>v.filter((_,j)=>i!==j))}><Trash2 size={16}/></button></div>)}
+   {receiptPreview&&<p className="games-small">Wichtig: „Nicht erkannt“ bedeutet, dass keine Zahl ausgelesen wurde. Die graue Beschriftung ist kein gültiger Tipp.</p>}
+   {lines.map((line,i)=><div className="line-editor" key={i}><span className="line-index">{i+1}</span><label className="field">Hauptzahlen<input value={line.main} placeholder="Nicht erkannt" aria-invalid={Boolean(receiptPreview&&!parseNumbers(line.main,5,50))} onChange={e=>updateLine(i,"main",e.target.value)}/></label><label className="field euro-input">Eurozahlen<input value={line.euro} placeholder="Nicht erkannt" aria-invalid={Boolean(receiptPreview&&!parseNumbers(line.euro,2,12))} onChange={e=>updateLine(i,"euro",e.target.value)}/></label><button aria-label={"Tippfeld "+(i+1)+" entfernen"} className="small-btn" disabled={lines.length===1} onClick={()=>setLines(v=>v.filter((_,j)=>i!==j))}><Trash2 size={16}/></button></div>)}
    <button className="outlined-btn" disabled={lines.length>=20} onClick={()=>setLines(v=>[...v,emptyLine()])}><Plus size={16}/> Weiteres Tippfeld</button>
    <div className="games-subtitle"><h3>Gültige Ziehungen</h3><span>Alle Spieltermine explizit angeben</span></div>
    <div className="date-editor"><input aria-label="Ziehungsdatum hinzufügen" type="date" value={date} onChange={e=>setDate(e.target.value)}/><button className="outlined-btn" onClick={addDate}><Plus size={16}/> Datum hinzufügen</button></div>

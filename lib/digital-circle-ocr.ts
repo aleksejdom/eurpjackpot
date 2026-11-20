@@ -55,8 +55,10 @@ export function detectDigitalBallRows(image:PixelImage):DigitalBallRow[]{
    }
   }
   if(bestLength<Math.max(bandH*2,w*.16))continue;
-  const firstCenterX=bestStart+bandH*.19;
-  const step=(bestLength-bandH*.82)/4;
+  // Top-edge gray run covers five main-number steps. A fixed
+  // fraction of its length accurately tracks scaled circle positions.
+  const firstCenterX=bestStart+bandH*.26;
+  const step=bestLength/5;
   if(step<bandH*.65||step>bandH*1.2)continue;
   if(firstCenterX+step*6+bandH*.2>=w)continue;
   candidates.push({top:(group.start+group.last)/2-bandH/2+bandH/2,height:bandH,firstCenterX,step});
@@ -107,102 +109,158 @@ export function parseBubbleSheetTsv(tsv:string,cellCount:number):Array<number|nu
  return result;
 }
 
-async function makeSheets(file:File,progress:(text:string)=>void):Promise<{sheets:Blob[];rowCount:number}|null>{
+
+/** Each crop is a separate OCR document. Unlike a 4,000px-tall sheet,
+ * Tesseract cannot merge or reorder glyphs across ticket fields. */
+/** Count dark connected digit glyphs inside one circle, independently of OCR.
+ * Helps distinguish "37" from truncated "3" and "9" from a guessed "8".
+ */
+export function countDarkGlyphs(pixels:Uint8ClampedArray,size:number):number{
+ if(pixels.length<size*size*4)return 0;
+ const mask=new Uint8Array(size*size),seen=new Uint8Array(size*size);
+ for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+  const i=y*size+x,p=i*4;
+  if(Math.hypot(x-size/2,y-size/2)>size*.39)continue;
+  const gray=(pixels[p]*.299+pixels[p+1]*.587+pixels[p+2]*.114);
+  if(gray<135)mask[i]=1;
+ }
+ let count=0;
+ for(let seed=0;seed<mask.length;seed++){
+  if(!mask[seed]||seen[seed])continue;
+  const pending=[seed];seen[seed]=1;
+  let area=0,minY=size,maxY=0;
+  while(pending.length){
+   const at=pending.pop()!,y=Math.floor(at/size),x=at%size;
+   area++;minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+   for(const n of [at-1,at+1,at-size,at+size]){
+    if(n<0||n>=mask.length||seen[n]||!mask[n])continue;
+    if(Math.abs((n%size)-x)+Math.abs(Math.floor(n/size)-y)!==1)continue;
+    seen[n]=1;pending.push(n);
+   }
+  }
+  if(area>=Math.max(16,size*.3)&&maxY-minY>=size*.12)count++;
+ }
+ return count;
+}
+async function prepareCells(file:File,progress:(text:string)=>void):Promise<Array<{blob:Blob;glyphs:number}>|null>{
  if(typeof document==="undefined")return null;
  let bitmap:ImageBitmap;
  try{bitmap=await createImageBitmap(file);}catch{return null;}
  try{
   const scale=Math.min(1,2400/Math.max(bitmap.width,bitmap.height));
   const canvas=document.createElement("canvas");
-  canvas.width=Math.round(bitmap.width*scale);
-  canvas.height=Math.round(bitmap.height*scale);
+  canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+  canvas.height=Math.max(1,Math.round(bitmap.height*scale));
   const ctx=canvas.getContext("2d",{willReadFrequently:true});
   if(!ctx)return null;
-  ctx.fillStyle="white";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
   const rows=detectDigitalBallRows(ctx.getImageData(0,0,canvas.width,canvas.height));
   if(!rows.length)return null;
-  progress(rows.length+" getrennte Zahlenleisten gefunden.");
-  async function sheet(radius:number):Promise<Blob>{
-   const out=document.createElement("canvas");
-   out.width=tileW;out.height=rows.length*7*tileH;
-   const c=out.getContext("2d");
-   if(!c)throw Error("Canvas konnte nicht erstellt werden");
-   c.fillStyle="white";c.fillRect(0,0,out.width,out.height);
-   let cell=0;
-   for(const row of rows){
-    for(let i=0;i<7;i++){
-     const cx=row.firstCenterX+row.step*i;
-     const cy=row.top;
-     const half=Math.max(7,Math.round(row.height*radius));
-     const x=Math.round(cx-half),y=Math.round(cy-half);
-     if(x<0||y<0||x+2*half>canvas.width||y+2*half>canvas.height)throw Error("Zahlenfeld außerhalb des Bildes");
-     c.drawImage(canvas,x,y,half*2,half*2,30,cell*tileH+16,124,124);
-     cell++;
+  progress(rows.length+" Zahlenleisten und "+(rows.length*7)+" einzelne Zahlenkreise gefunden.");
+  const cells:Array<{blob:Blob;glyphs:number}>=[];
+  for(const row of rows)for(let i=0;i<7;i++){
+   const x=row.firstCenterX+row.step*i,y=row.top;
+   const r=Math.max(9,Math.round(row.height*.34));
+   if(x-r<0||y-r<0||x+r>canvas.width||y+r>canvas.height)throw Error("Zahlenkreis außerhalb des Bildes");
+   const size=2*r,source=ctx.getImageData(Math.round(x-r),Math.round(y-r),size,size);
+   // Strip the colored gray ring: otherwise Tesseract can mistake the
+   // circle's corners for a second numeral or an adjacent character.
+   for(let py=0;py<size;py++)for(let px=0;px<size;px++){
+    if(Math.hypot(px-r,py-r)>r*.78){
+     const at=(py*size+px)*4;
+     source.data[at]=source.data[at+1]=source.data[at+2]=255;
     }
    }
-   return await new Promise<Blob>((resolve,reject)=>out.toBlob(b=>b?resolve(b):reject(Error("Bildaufbereitung fehlgeschlagen")),"image/png"));
+   const glyphs=countDarkGlyphs(source.data,size);
+   const out=document.createElement("canvas");
+   out.width=380;out.height=340;
+   const painter=out.getContext("2d");
+   if(!painter)throw Error("Canvas nicht verfügbar");
+   painter.fillStyle="#fff";painter.fillRect(0,0,out.width,out.height);
+   const pixel=document.createElement("canvas");
+   pixel.width=pixel.height=size;
+   const pc=pixel.getContext("2d");
+   if(!pc)throw Error("Canvas nicht verfügbar");
+   pc.putImageData(source,0,0);
+   painter.imageSmoothingEnabled=true;
+   painter.imageSmoothingQuality="high";
+   painter.drawImage(pixel,58,38,264,264);
+   const blob=await new Promise<Blob>((resolve,reject)=>out.toBlob(b=>b?resolve(b):reject(Error("Ziffernbild fehlgeschlagen")),"image/png"));
+   cells.push({blob,glyphs});
   }
-  return {sheets:[await sheet(.26),await sheet(.24),await sheet(.25)],rowCount:rows.length};
+  return cells;
  }finally{bitmap.close();}
 }
 
-export async function scanDigitalBallNumbers(file:File,worker:Worker,psm:{SINGLE_BLOCK:string|number;AUTO:string|number},progress:(message:string)=>void):Promise<DigitalBubbleScan|null>{
- const images=await makeSheets(file,progress);
- if(!images)return null;
- const count=images.rowCount*7;
- const scans:Array<Array<number|null>>=[];
+export function parseSingleNumber(text:string,max:number):number|null{
+ const raw=text.trim();
+ if(!/^\d{1,2}$/.test(raw))return null;
+ const number=Number(raw);
+ return Number.isInteger(number)&&number>=1&&number<=max?number:null;
+}
+type PsmModes={SINGLE_WORD:string|number;SINGLE_CHAR:string|number;AUTO:string|number};
+/** OCR runs per bubble, with a second segmentation mode if the first reading
+ * is uncertain. Both modes are checked against valid Eurojackpot ranges. */
+export async function scanDigitalBallNumbers(
+ file:File,worker:Worker,psm:PsmModes,progress:(message:string)=>void
+):Promise<DigitalBubbleScan|null>{
+ const cells=await prepareCells(file,progress);
+ if(!cells)return null;
+ const numbers:(number|null)[]=[];
  try{
-  await worker.setParameters({tessedit_char_whitelist:"0123456789",tessedit_pageseg_mode:psm.SINGLE_BLOCK as never});
-  for(let i=0;i<2;i++){
-   progress("Einzelzahlen werden geprüft (Durchlauf "+(i+1)+"/2) …");
-   const recognition=await worker.recognize(images.sheets[i],{}, {tsv:true});
-   scans.push(parseBubbleSheetTsv(recognition.data.tsv||"",count));
-  }
-  if(scans[0].some((n,i)=>n===null||n!==scans[1][i])){
-   progress("Unsichere Ziffern werden erneut kontrolliert …");
-   const third=await worker.recognize(images.sheets[2],{}, {tsv:true});
-   scans.push(parseBubbleSheetTsv(third.data.tsv||"",count));
+  await worker.setParameters({tessedit_char_whitelist:"0123456789"});
+  for(let i=0;i<cells.length;i++){
+   const max=i%7<5?50:12;
+   const {blob,glyphs}=cells[i];
+   const position="Spielfeld "+(Math.floor(i/7)+1)+" · Zahl "+(i%7+1);
+   progress(position+" wird gelesen ("+(i+1)+"/"+cells.length+") …");
+   if(glyphs<1||glyphs>2){numbers.push(null);continue;}
+   await worker.setParameters({tessedit_pageseg_mode:psm.SINGLE_WORD as never});
+   const word=await worker.recognize(blob);
+   const wordNumber=parseSingleNumber(word.data.text,max);
+   await worker.setParameters({tessedit_pageseg_mode:psm.SINGLE_CHAR as never});
+   const character=await worker.recognize(blob);
+   const charNumber=parseSingleNumber(character.data.text,max);
+   const candidates=[
+    {n:wordNumber,confidence:word.data.confidence},
+    {n:charNumber,confidence:character.data.confidence}
+   ].filter(x=>x.n!==null&&String(x.n).length===glyphs);
+   let digit:number|null=null;
+   if(candidates.length===1&&candidates[0].confidence>=28)digit=candidates[0].n;
+   else if(candidates.length===2){
+    if(candidates[0].n===candidates[1].n)digit=candidates[0].n;
+    else{
+     const ranked=[...candidates].sort((a,b)=>b.confidence-a.confidence);
+     if(ranked[0].confidence>=75&&ranked[0].confidence-ranked[1].confidence>=20)digit=ranked[0].n;
+    }
+   }
+   numbers.push(digit);
   }
  }finally{
   await worker.setParameters({tessedit_char_whitelist:"",tessedit_pageseg_mode:psm.AUTO as never});
  }
- const values:Array<number|null>=[];
- for(let i=0;i<count;i++){
-  const counts=new Map<number,number>();
-  for(const scan of scans){
-   const n=scan[i];
-   if(n!==null)counts.set(n,(counts.get(n)||0)+1);
-  }
-  const ranking=[...counts].sort((a,b)=>b[1]-a[1]);
-  // Agreement of two INDEPENDENT crops is essential.
-  values.push(ranking.length&&ranking[0][1]>=2&&
-   (ranking.length<2||ranking[0][1]>ranking[1][1])?ranking[0][0]:null);
- }
  const warnings:string[]=[];
  const lines:DigitalBubbleScan["lines"]=[];
- for(let r=0;r<images.rowCount;r++){
-  const part=values.slice(r*7,r*7+7);
-  const main=part.slice(0,5),euro=part.slice(5,7);
-  const mainValid=main.every((n):n is number=>n!==null)&&new Set(main).size===5;
-  const euroValid=euro.every((n):n is number=>n!==null)&&new Set(euro).size===2;
-  const mainString=mainValid?main.join(" "):"";
-  const euroString=euroValid?euro.join(" "):"";
-  if(!mainValid||!euroValid)warnings.push("Spielfeld "+(r+1)+": "+(!mainValid?"Hauptzahlen ":"")+(!euroValid?"Eurozahlen ":"")+"bitte am Originalbild prüfen");
-  lines.push({index:r+1,main:mainString,euro:euroString,complete:mainValid&&euroValid});
+ for(let r=0;r<cells.length/7;r++){
+  const values=numbers.slice(r*7,r*7+7);
+  const main=values.slice(0,5),euro=values.slice(5,7);
+  const validMain=main.every((n):n is number=>n!==null)&&new Set(main).size===5;
+  const validEuro=euro.every((n):n is number=>n!==null)&&new Set(euro).size===2;
+  const line={index:r+1,main:validMain?main.join(" "):"",euro:validEuro?euro.join(" "):"",complete:validMain&&validEuro};
+  if(!validMain||!validEuro)warnings.push("Spielfeld "+(r+1)+": "+(!validMain?"Hauptzahlen ":"")+(!validEuro?"Eurozahlen ":"")+"nicht sicher erkannt – bitte manuell prüfen");
+  lines.push(line);
  }
- // Identical complete rows may be legitimate, but are a common error
- // signature. Do not silently populate identical lines without verification.
- const duplicates=new Map<string,number[]>();
+ // Full duplicate combinations across independent strips are suspicious;
+ // require confirmation, do not silently clone one field into others.
+ const seen=new Map<string,number[]>();
  for(const line of lines)if(line.complete){
   const key=line.main+"|"+line.euro;
-  duplicates.set(key,[...(duplicates.get(key)||[]),line.index]);
+  seen.set(key,[...(seen.get(key)||[]),line.index]);
  }
- for(const group of duplicates.values())if(group.length>1){
-  for(const line of lines)if(group.includes(line.index)){
-   line.main="";line.euro="";line.complete=false;
-  }
-  warnings.push("Gleiche Zahlen in Spielfeld "+group.join(", ")+": bitte manuell bestätigen");
+ for(const duplicates of seen.values())if(duplicates.length>1){
+  for(const line of lines)if(duplicates.includes(line.index)){line.main="";line.euro="";line.complete=false;}
+  warnings.push("Identische OCR-Ergebnisse bei Feld "+duplicates.join(" und ")+": bitte manuell prüfen");
  }
  return {lines,warnings};
 }

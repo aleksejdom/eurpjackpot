@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {detectDigitalBallRows,parseBubbleSheetTsv} from "../lib/digital-circle-ocr.ts";
+import {detectDigitalBallRows,parseBubbleSheetTsv,countDarkGlyphs,parseSingleNumber} from "../lib/digital-circle-ocr.ts";
 
 test("detect separate number bars without reusing the first field",()=>{
  const w=600,h=900,rgba=new Uint8ClampedArray(w*h*4);
@@ -34,4 +34,28 @@ test("invalid bubble numbers are never accepted",()=>{
  [5,1,1,1,2,1,30,201,70,60,90,"0"].join("\t"),
  [5,1,1,1,3,1,30,2*156+45,70,60,90,"7"].join("\t")].join("\n");
  assert.deepEqual(parseBubbleSheetTsv(tsv,3),[null,null,7]);
+});
+
+test("isolated bubble geometry determines single- and double-digit symbols",()=>{
+ const size=80;
+ const make=(rects)=>{
+  const pixels=new Uint8ClampedArray(size*size*4);
+  for(let i=0;i<size*size;i++){pixels[i*4]=255;pixels[i*4+1]=255;pixels[i*4+2]=255;pixels[i*4+3]=255;}
+  for(const [left,top,right,bottom] of rects)
+   for(let y=top;y<bottom;y++)for(let x=left;x<right;x++){
+    const i=(y*size+x)*4;pixels[i]=pixels[i+1]=pixels[i+2]=0;
+   }
+  return pixels;
+ };
+ assert.equal(countDarkGlyphs(make([[32,24,46,56]]),size),1);
+ assert.equal(countDarkGlyphs(make([[22,24,31,56],[45,24,54,56]]),size),2);
+ assert.equal(countDarkGlyphs(make([]),size),0);
+});
+test("invalid OCR output cannot be mistaken for a winning number",()=>{
+ assert.equal(parseSingleNumber("9",12),9);
+ assert.equal(parseSingleNumber("37",50),37);
+ assert.equal(parseSingleNumber("37",12),null);
+ assert.equal(parseSingleNumber("0",50),null);
+ assert.equal(parseSingleNumber("9 10",12),null);
+ assert.equal(parseSingleNumber("O",50),null);
 });

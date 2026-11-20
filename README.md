@@ -196,3 +196,20 @@ erkennbare Zahlenleisten greift ein vorsichtiger Fallback mit Warnungen.
 und Screenshot-Qualitäten garantieren.** Vor dem Speichern müssen die Zahlen
 mit dem Originalbild verglichen werden. Die Verarbeitung bleibt lokal im
 Browser; die Bilddatei wird nicht auf dem Server gespeichert.
+
+
+### Fix: iPhone-Screenshots mit leeren OCR-Feldern
+
+Der frühere Scanner setzte 28 Zahlenausschnitte zu einem extrem hohen Bild
+zusammen. Tesseract konnte die einzelnen Zahlen darin auf mobilen Geräten
+teilweise gar nicht erkennen. Die neue Fassung liest **jeden Zahlenkreis
+als eigenes OCR-Bild**, verwendet eine Maske gegen den grauen Kreisrand,
+prüft die Zahl der erkennbaren Ziffern (eine oder zwei) und vergleicht zwei
+Tesseract-Segmentierungsmodi. Unsichere Werte bleiben zur Prüfung leer.
+
+In der Erfassungsmaske werden keine scheinbar erkannten Beispielzahlen mehr
+angezeigt: Leere Eingaben tragen nur den Platzhalter **„Nicht erkannt“**.
+Die Statusmeldung unterscheidet zwischen gefundenen Spielfeldern und
+vollständig erkannten Zahlensätzen. Das Bild wird weiterhin nur lokal im
+Browser verarbeitet; eine hundertprozentige OCR-Trefferquote ist nicht
+versprochen.
