@@ -33,8 +33,7 @@ export async function sendPasswordResetMail(to:string,url:string):Promise<void>{
   tls:{minVersion:"TLSv1.2"},
   connectionTimeout:10000,
   greetingTimeout:10000,
-  socketTimeout:12000,
-  pool:false
+  socketTimeout:12000
  };
  const transporter=nodemailer.createTransport(options);
  try{
