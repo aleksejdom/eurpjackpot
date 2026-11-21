@@ -46,12 +46,17 @@ export async function getAllDraws(): Promise<Draw[]> {
   const result = await getPool().query<DBRow>("SELECT to_char(date, 'YYYY-MM-DD') AS date, main_numbers, euro_numbers FROM eurojackpot_draws ORDER BY date DESC");
   return result.rows.map(rowToDraw);
 }
+export async function getLatestDrawDate():Promise<string|null>{
+ await ready();
+ const result=await getPool().query<{date:string}>("SELECT to_char(max(date), 'YYYY-MM-DD') AS date FROM eurojackpot_draws");
+ return result.rows[0]?.date??null;
+}
 export async function getMeta(key: string): Promise<string | null> {
   await ready();
   const result = await getPool().query<{value:string}>("SELECT value FROM eurojackpot_meta WHERE key = $1", [key]);
   return result.rows[0]?.value ?? null;
 }
-export async function saveDraws(draws: Draw[], timestamp: string): Promise<number> {
+export async function saveDraws(draws: Draw[], timestamp: string, source="LOTTO Bayern / protomultix"): Promise<number> {
   await ready();
   const client = await getPool().connect();
   try {
@@ -65,12 +70,16 @@ export async function saveDraws(draws: Draw[], timestamp: string): Promise<numbe
          euro_numbers=EXCLUDED.euro_numbers,
          source=EXCLUDED.source,
          updated_at=now()`,
-        [d.date, d.main_numbers, d.euro_numbers, "LOTTO Bayern / protomultix"]
+        [d.date, d.main_numbers, d.euro_numbers, source]
       );
     }
     await client.query(
       `INSERT INTO eurojackpot_meta (key,value) VALUES ('last_sync',$1)
        ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, [timestamp]
+    );
+    await client.query(
+      "INSERT INTO eurojackpot_meta (key,value) VALUES ('last_source',$1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
+      [source]
     );
     await client.query("COMMIT");
     return draws.length;

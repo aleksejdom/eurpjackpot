@@ -269,3 +269,34 @@ Die Statusmeldung unterscheidet zwischen gefundenen Spielfeldern und
 vollständig erkannten Zahlensätzen. Das Bild wird weiterhin nur lokal im
 Browser verarbeitet; eine hundertprozentige OCR-Trefferquote ist nicht
 versprochen.
+
+## Aktuelle Eurojackpot-Ziehungen: automatische Quellenauswahl
+
+Der frühere Workflow konnte `synced:true` melden, obwohl eine alte Datei
+erneut importiert wurde. Nun werden der **letzte Ziehungstag**, der zu
+erwartende Ziehungstag und der Quellenstand getrennt geprüft.
+
+- Primärquelle: protomultix / LOTTO-Bayern-Archiv
+- Sekundärquelle: [Lottochaos Eurojackpot Open Data](https://lottochaos.com/de/open-data/)
+  (CSV `https://lottochaos.com/data/ej.csv`, Lizenz CC BY 4.0,
+  Quellenangabe „Lottochaos.com“). Die CSV ist nach `date,weekday,n1..n5,b1..b2`
+  aufgebaut; die Anwendung importiert ab dem Eurojackpot-Regelstand
+  25.03.2022.
+- Ist die Primärquelle nicht erreichbar oder älter als die **fällige**
+  Dienstags-/Freitagsziehung, wird automatisch die CSV-Quelle verwendet.
+- Ein erfolgreicher Download allein reicht **nicht**: Liegt die neueste
+  Ziehung noch vor dem erwarteten Termin, meldet die API einen Fehler.
+  Vor 23:00 Uhr lokaler Berliner Zeit ist die Ziehung desselben Abends
+  noch nicht als überfällig einzustufen.
+- Ein altes Backup kann keine neueren, schon gespeicherten Ziehungen
+  überschreiben.
+- Das Dashboard zeigt den **letzten echten Ziehungstag**, die verwendete
+  Quelle und bei Verzögerung einen auffälligen Warnhinweis statt lediglich
+  ein neues Synchronisierungsdatum.
+- Ein Klick auf **Aktualisieren** erzwingt auch außerhalb des regulären
+  Intervalls einen neuen Quellenauswahlversuch. Im Hintergrund synchronisieren
+  GitHub Actions dienstags/freitags mehrfach sowie am Folgemorgen.
+
+Hinweis: Die Backupquelle veröffentlicht Zahlen nach eigenen Angaben kurz
+nach der Ziehung, ist aber keine amtliche Lotto-Prüfstelle. Bitte
+maßgebliche Gewinne anhand der offiziellen Lotto-Veranstalter prüfen.
