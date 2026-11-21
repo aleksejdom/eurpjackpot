@@ -2,6 +2,7 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
 import { getMigrations } from "better-auth/db/migration";
+import {sendPasswordResetMail} from "./password-reset-mail";
 const database = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 5,
@@ -12,7 +13,16 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     disableSignUp: process.env.BETTER_AUTH_ENABLE_SIGNUP !== "true",
-    minPasswordLength: 12
+    minPasswordLength: 12,
+    resetPasswordTokenExpiresIn: 60 * 30,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({user,url}) => {
+      // Do not log tokens or reset URLs. The API gives the same response
+      // whether or not the account exists.
+      void sendPasswordResetMail(user.email,url).catch(error=>{
+        console.error("[auth] Password reset delivery failed",error instanceof Error?error.message:"Unknown mail error");
+      });
+    }
   },
   rateLimit: { enabled: true, window: 60, max: 20 },
   trustedOrigins: process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : [],

@@ -24,6 +24,36 @@ Die alten Variablen `BASIC_AUTH_USER` und `BASIC_AUTH_PASSWORD` werden nicht meh
 
 ⚠️ Diese App besitzt aktuell **keine getrennten Datenräume pro User**. Alle angemeldeten Konten sehen dieselben Tipps und Ausgaben. Deshalb in dieser persönlichen Installation nur das eigene Konto anlegen.
 
+
+## Passwort zurücksetzen (Better Auth)
+
+Im Login befindet sich der Link **Passwort vergessen?**. Unter
+`/forgot-password` wird ein Einmal-Link an die hinterlegte E-Mail-Adresse
+verschickt; `/reset-password` nimmt den Einmal-Token entgegen und fordert
+zweimal das neue Passwort (12–128 Zeichen). Better Auth beendet nach der
+Änderung alle bisherigen Sitzungen.
+
+**Wichtig: Erst nach SMTP-Konfiguration versandfähig.** In Coolify
+die folgenden geheimen Runtime-Variablen ergänzen:
+
+- `SMTP_HOST` – SMTP-Server des E-Mail-Anbieters
+- `SMTP_PORT` – in der Regel 587 (STARTTLS) oder 465 (TLS)
+- `SMTP_USER` – Benutzername für das Postfach
+- `SMTP_PASSWORD` – SMTP-Passwort
+- `SMTP_FROM` – Absender, beispielsweise `Eurojackpot <postfach@example.de>`
+- `BETTER_AUTH_URL=https://euro.ad-d.info` – bestehende offizielle HTTPS-Adresse
+
+Bei fehlenden SMTP-Einstellungen liefert die Reset-API HTTP 503, sodass kein
+Versand behauptet wird. E-Mail und Ablauf-Link werden **nie** in Logs geschrieben.
+Der Link wird beim Aufruf aus der Browser-Adresszeile entfernt. Token laufen nach
+30 Minuten ab; nach Nutzung sind sie nicht wiederverwendbar.
+
+Die Zurücksetzungs-E-Mail funktioniert nur, wenn die hinterlegte
+Better-Auth-E-Mail-Adresse tatsächlich empfangen werden kann. Die Funktion
+umgeht keine Datenbank- oder Authentifizierungsfehler. Der erfolgreiche
+GitHub-Build prüft keinen realen SMTP-Versand; nach Coolify-Redeploy ist
+ein Test mit dem echten Postfach erforderlich.
+
 ## Spielscheinerkennung
 
 Die Erkennung orientiert sich an Lotto-Baden-Württemberg-EUROJACKPOT-Spielquittungen: Spielnummer, 5/50-Hauptzahlen, 2/12-Eurozahlen, Kaufdatum, Laufzeit, Ziehungstermine und Betrag. Das Foto wird vor der Texterkennung lokal im Browser aufbereitet. Bei unsicheren Ergebnissen bleiben Felder leer und werden zur manuellen Kontrolle markiert. **OCR kann Zahlen, Beträge oder Daten falsch ablesen; niemals ungeprüft speichern.** Bilddateien werden nicht in der Datenbank abgelegt oder an die App-API übertragen. OCR-Sprachmodelle können nachgeladen werden.

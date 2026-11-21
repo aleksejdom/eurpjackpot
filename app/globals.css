@@ -403,3 +403,7 @@ body{width:100%;min-width:0;max-width:100%;overflow-x:clip}
  .feature-body .balls{width:100%}
  .games-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+.auth-reset-link{display:inline-flex;align-items:center;gap:8px;color:#f5c34b;text-decoration:none;font-size:14px;font-weight:600;margin:14px 0 8px;min-height:44px;max-width:100%}
+.auth-reset-link:hover{text-decoration:underline}
+.auth-reset-link:focus-visible{outline:2px solid #f5c34b;outline-offset:4px;border-radius:3px}

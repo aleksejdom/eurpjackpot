@@ -1,6 +1,7 @@
 "use client";
 import {useState,type FormEvent} from "react";
 import {useRouter} from "next/navigation";
+import Link from "next/link";
 import {LockKeyhole,Mail,Eye,EyeOff,Trophy,LogIn} from "lucide-react";
 import {authClient} from "@/lib/auth-client";
 export default function LoginForm({allowRegistration}:{allowRegistration:boolean}){
@@ -34,6 +35,7 @@ export default function LoginForm({allowRegistration}:{allowRegistration:boolean
      <label className="auth-field"><span>Passwort</span><div className="auth-input"><LockKeyhole size={17}/><input type={visible?"text":"password"} autoComplete={register?"new-password":"current-password"} value={password} onChange={e=>setPassword(e.target.value)} required minLength={register?12:1} placeholder="••••••••••••"/><button className="auth-reveal" type="button" onClick={()=>setVisible(v=>!v)} aria-label={visible?"Passwort verbergen":"Passwort anzeigen"}>{visible?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>
      {register&&<p className="auth-hint">Mindestens 12 Zeichen. Registrierung nach der Einrichtung in Coolify wieder deaktivieren.</p>}
      {error&&<p className="auth-error" role="alert">{error}</p>}
+     {!register&&<Link className="auth-reset-link" href="/forgot-password">Passwort vergessen?</Link>}
      <button type="submit" className="auth-submit" disabled={busy}><LogIn size={17}/>{busy?"Bitte warten …":register?"Konto erstellen":"Anmelden"}</button>
    </form>
    {allowRegistration&&<button className="auth-toggle" onClick={()=>{setRegister(v=>!v);setError("");}}>{register?"Ich habe bereits ein Konto – anmelden":"Erstes Konto einrichten"}</button>}
