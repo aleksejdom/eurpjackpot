@@ -64,14 +64,40 @@ Die historische Auswertung zeigt u. a. den Anteil der Ziehungen mit benachbarten
 
 **Wichtig:** Jede gültige Kombination hat bei einer neuen Ziehung dieselbe Jackpotchance (1 : 139.838.160). Gewichtet erzeugte Vorschläge besitzen keinen nachgewiesenen Vorteil. Generierte Zahlen sind **keine gekauften Spielscheine** und werden nicht als Ausgaben erfasst.
 
-## Automatische Dienstag-/Freitag-Aktualisierung
+## Automatische Dienstag-/Freitag-Aktualisierung (GitHub OIDC)
 
-Die App besitzt einen serverseitigen Abrufendpunkt `GET /api/cron/sync` mit geheimem Bearer-Token. Die GitHub-Action `.github/workflows/sync-eurojackpot.yml` ruft ihn dienstags/freitags mehrmals am Abend und zusätzlich am Folgemorgen auf. **Die Zeitsteuerung ist erst aktiv, wenn beide GitHub Repository Secrets eingerichtet sind:**
+Der geplante Workflow `.github/workflows/sync-eurojackpot.yml` ruft
+`https://euro.ad-d.info/api/cron/sync` dienstags und freitags am
+Abend (UTC) sowie am Folgemorgen ab. **Es sind keine GitHub Secrets nötig.**
 
-- `EUROJACKPOT_APP_URL`: exakte öffentliche HTTPS-URL der App, beispielsweise `https://euro.ad-d.info`
-- `EUROJACKPOT_CRON_SECRET`: derselbe mindestens 32 Zeichen lange Wert wie die geschützte Coolify-Runtime-Variable `CRON_SECRET`.
+Die GitHub Action fordert mit `permissions: id-token: write` ein kurzlebiges,
+von GitHub signiertes **OIDC-ID-Token** für die konkrete Audience
+`https://euro.ad-d.info/api/cron/sync` an. Das Backend prüft die
+RSA-Signatur über den festen öffentlichen GitHub-JWKS-Endpunkt, Ablaufzeit,
+Issuer, Audience und die exakten Ansprüche:
 
-Nach Hinterlegen der Secrets im GitHub-Repository unter Settings → Secrets and variables → Actions kann die Action manuell über Actions → Eurojackpot results sync → Run workflow getestet werden. Geplante GitHub-Actions-Ausführungen können zeitlich verzögert sein. Ein Abruf garantiert nicht, dass die externe Quelle zu diesem Zeitpunkt schon aktualisiert wurde.
+- Repository: `aleksejdom/eurpjackpot`
+- Ref: `refs/heads/main`
+- Workflow: `aleksejdom/eurpjackpot/.github/workflows/sync-eurojackpot.yml@refs/heads/main`
+- Event: `schedule` oder `workflow_dispatch`.
+
+Nur danach dürfen Draw-Synchronisation und optionale Quotenaktualisierung
+gestartet werden. Der alte statische Bearer-Key `CRON_SECRET` funktioniert
+alternativ weiterhin, sofern in Coolify konfiguriert; er wird von GitHub
+Actions nicht mehr benötigt.
+
+**Deployment:** In Coolify die neueste `main`-Version neu bereitstellen,
+damit der Endpoint GitHub OIDC akzeptiert. Anschließend im GitHub-Tab
+**Actions → Eurojackpot results sync → Run workflow** einmal manuell
+auslösen. Vor dem Redeploy liefert der alte Endpoint weiterhin 401/503,
+selbst wenn die GitHub-Action bereits das neue OIDC-Token sendet.
+
+Der Workflow meldet einen Fehler, wenn die Haupt-Ziehungsquelle nicht
+erreichbar ist, statt einen fehlgeschlagenen Import als erfolgreich
+auszugeben. Eine nicht konfigurierte, optionale Quotenquelle
+(`EUROJACKPOT_QUOTAS_URL`) verhindert dagegen keine Aktualisierung der
+Ziehungszahlen. Geplante GitHub-Läufe können verspätet starten und Daten
+können erst nach Veröffentlichung durch die externe Quelle übernommen werden.
 
 ## Gewinnbeträge pro Tippfeld
 

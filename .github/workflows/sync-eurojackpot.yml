@@ -1,29 +1,43 @@
 name: Eurojackpot results sync
 on:
   schedule:
+    # GitHub cron uses UTC; retry on Tuesday/Friday evenings and next mornings.
     - cron: '30 20,21,22,23 * * 2,5'
     - cron: '15 7 * * 3,6'
   workflow_dispatch:
 permissions:
   contents: read
+  id-token: write
 jobs:
   update-results:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Call authenticated sync endpoint
+      - name: Synchronize Eurojackpot results with GitHub OIDC
         env:
-          APP_URL: ${{ secrets.EUROJACKPOT_APP_URL }}
-          CRON_SECRET: ${{ secrets.EUROJACKPOT_CRON_SECRET }}
+          APP_URL: https://euro.ad-d.info
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${APP_URL}" ] || [ -z "${CRON_SECRET}" ]; then
-            echo "Configure EUROJACKPOT_APP_URL and EUROJACKPOT_CRON_SECRET repository secrets first."
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::GitHub OIDC is unavailable. Check the id-token: write permission."
             exit 1
           fi
-          curl --fail --show-error --silent \
-            --max-time 80 \
+          AUDIENCE="${APP_URL%/}/api/cron/sync"
+          OIDC_JSON="$(curl --fail --silent --show-error --max-time 15 \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}")"
+          ID_TOKEN="$(jq -er '.value' <<< "${OIDC_JSON}")"
+          if [ -z "${ID_TOKEN}" ]; then
+            echo "::error::No GitHub OIDC token was returned"
+            exit 1
+          fi
+          echo "::add-mask::${ID_TOKEN}"
+          echo "Requesting synchronization using signed GitHub workflow identity..."
+          curl --fail-with-body --show-error --silent \
+            --max-time 90 \
             --retry 2 \
             --retry-delay 10 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${APP_URL%/}/api/cron/sync"
+            -H "Authorization: Bearer ${ID_TOKEN}" \
+            -H "Accept: application/json" \
+            "${AUDIENCE}"
