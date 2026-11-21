@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 
 export function passwordResetMailConfigured():boolean{
  const env=process.env;
@@ -23,7 +24,7 @@ export async function sendPasswordResetMail(to:string,url:string):Promise<void>{
  if(!passwordResetMailConfigured())throw Error("SMTP für Passwort-Zurücksetzung nicht konfiguriert");
  validateResetUrl(url);
  const port=Number(process.env.SMTP_PORT||587);
- const transporter=nodemailer.createTransport({
+ const options:SMTPTransport.Options={
   host:process.env.SMTP_HOST!,
   port,
   secure:port===465,
@@ -34,7 +35,8 @@ export async function sendPasswordResetMail(to:string,url:string):Promise<void>{
   greetingTimeout:10000,
   socketTimeout:12000,
   pool:false
- });
+ };
+ const transporter=nodemailer.createTransport(options);
  try{
   await transporter.sendMail({
    from:process.env.SMTP_FROM!,
